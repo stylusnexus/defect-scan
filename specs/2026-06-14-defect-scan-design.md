@@ -57,11 +57,20 @@ later is one new profile file — no change to the orchestration.
 
 ---
 
-## Architecture — four stages
+## Architecture — five stages
 
 1. **Detect** — identify stack(s) from manifests/extensions
    (`package.json` + `tsconfig` → React/TS; `pyproject.toml`/`.py` → Python;
    otherwise generic). A repo can match multiple profiles; all matched profiles run.
+1b. **Triage** — rank the in-scope files so a large codebase is approached
+   methodically (scan what's most likely to harbor defects first, rather than
+   uniformly). A built-in, deterministic heuristic scores each file by a composite
+   of **git churn** (how often it changes), **size/complexity** (LOC), and
+   **security-sensitive path/name matches** (auth, login, session, password,
+   secret, token, crypto, query, sql, exec, eval, admin, payment). Deep passes
+   process files in priority order; `--full` still covers everything but
+   highest-risk first. Triage is most impactful on `--full`/large scopes and is a
+   no-op-ish pass-through on a one-file target.
 2. **Tool pass** — for each detected profile, discover which of its analyzers are
    actually installed, run them on the target, capture structured output.
    Missing tools are noted, not fatal. **Tool resolution is project-local-first:**
