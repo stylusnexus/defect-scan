@@ -5,9 +5,23 @@
 
 ## Toolchain
 Resolve each via `detect.sh tool <name> <project-dir>` (node_modules/.bin first,
-then global). Skip-with-hint if unresolved.
-- `tsc --noEmit`                              — type errors.
+then global). Skip-with-hint if unresolved. **Run from the project root** so
+config (flat `eslint.config.*` / `tsconfig.json`) resolves.
+- `tsc --noEmit`                              — type errors (whole project).
 - `eslint --format json <files>`              — lint/correctness rules.
+
+**ESLint exit codes are not all "problems" — read them:**
+- `0` → clean. `1` → lint problems found; parse the JSON.
+- `2` → **config/usage error (NOT clean)**. Mark the eslint check **inconclusive**
+  in the report; never imply the files passed.
+
+**ESLint 9 flat-config gotcha:** passing explicit file paths can yield
+`No files matching the pattern` when those paths fall outside the flat config's
+`files`/`ignores` scope (this is exit 2, inconclusive — not clean). Fallbacks, in
+order: (1) lint the containing directory instead of individual files; (2) use the
+project's own entry (`npm run lint -- <files>` / `npx eslint <files>`); (3) if
+still exit 2, report eslint inconclusive and rely on the reasoning pass.
+
 Install hints: `npm i -D typescript eslint`.
 
 ## Reasoning checklist

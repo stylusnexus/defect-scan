@@ -47,6 +47,12 @@ resolve, record it as **missing** with the profile's install hint and continue �
 never abort the scan. If a tool crashes or times out, capture stderr, mark that
 check **inconclusive**, and continue.
 
+**Read exit codes — do not equate "ran" with "clean."** A non-zero exit that means
+*problems found* (e.g. eslint `1`, tsc with diagnostics) is data to parse. A
+non-zero exit that means *tool/usage/config error* (e.g. eslint `2`, "No files
+matching the pattern", a config parse failure) is **inconclusive** — report it as
+such with the stderr reason; never let a tool error read as a passing file.
+
 ## Stage 3 — Reasoning pass
 Read the in-scope files against the profile's `## Reasoning checklist` and
 `baseline-categories.md`. For EVERY reasoning-only finding, run an
