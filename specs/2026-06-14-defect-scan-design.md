@@ -64,7 +64,12 @@ later is one new profile file — no change to the orchestration.
    otherwise generic). A repo can match multiple profiles; all matched profiles run.
 2. **Tool pass** — for each detected profile, discover which of its analyzers are
    actually installed, run them on the target, capture structured output.
-   Missing tools are noted, not fatal.
+   Missing tools are noted, not fatal. **Tool resolution is project-local-first:**
+   prefer `node_modules/.bin` / `npx` (JS/TS) and project venv / `pyproject`
+   entrypoints (Python) before falling back to a global binary; only declare a
+   tool "missing" after both fail. (Verified necessity: on the dev machine
+   `eslint` is not global but is normally project-local — a global-only check
+   would wrongly report it absent.)
 3. **Reasoning pass** — Claude reads the target against that profile's checklist
    for the defect classes tools miss. Every reasoning-only finding goes through an
    **adversarial verification** step (a refute-it pass) before it can rank above
@@ -120,8 +125,9 @@ Cross-cutting, specialized per profile:
   GIL-blocking calls, `==` vs `is`, unclosed resources.
 
 **Toolchains (v1):**
-- **React/TS** — `tsc --noEmit`, `eslint` (+ available plugins).
-- **Python** — `ruff`, `mypy`.
+- **React/TS** — `tsc --noEmit`, `eslint` (+ available plugins). Resolved
+  project-local-first (`node_modules/.bin` / `npx`), then global.
+- **Python** — `ruff`, `mypy`. Resolved via project venv first, then global.
 - **generic** — reasoning only, against the five baseline categories.
 
 ---
@@ -193,7 +199,9 @@ defect-scan hands heavy remediation off to `review-merge-pipeline` /
 
 ## Decisions locked during brainstorming
 
-- **Name:** `defect-scan` (matches `exposure-scan` / `debt-scan` / `codebase-health`).
+- **Name:** `defect-scan` — follows the existing `*-scan` / diagnostic naming
+  convention (`exposure-scan` and `codebase-health` are skills; `debt-scan` is a
+  slash command). Verified against `~/.claude/skills` and `~/.claude/commands`.
 - **Scope:** adaptive (no arg / path / `--full`).
 - **Detection method:** hybrid — real tools for ground truth + reasoning for the rest.
 - **v1 profiles:** React/TypeScript + Python + generic fallback. Go/Rust/C++/C#
