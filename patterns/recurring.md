@@ -174,3 +174,91 @@ truncates / slows in production at scale.
 **Manifested as:** work-plan-toolkit export/refresh slow at scale via per-issue
 `gh` fetches (#94, #106); and — first-hand — `gh issue list` silently capping at
 30 made a 720-open-issue repo look like it had 30 (caught while building this skill).
+
+---
+
+## P7 — Mock-only tests hide live integration/schema bugs
+
+**Generic defect:** Code with a real external contract — a SQL schema, an HTTP API
+shape, a file format, a middleware attribute — is tested *only* against mocks. The
+mock encodes the developer's assumed contract, so the test passes green while the
+real dependency rejects the call. CI is green; the first real request 500s.
+
+**Invariants to check:**
+1. **At least one real-contract test.** Anything touching a DB/external API has a
+   test that runs against the real schema (or a schema-validated fake), not only a
+   hand-written mock.
+2. **The mock must match reality.** If mocks are used, something pins them to the
+   actual schema/contract (generated types, a contract test, a migration check).
+
+**Detection heuristic:** Find modules that touch a database/external API. Check
+whether *every* test for them mocks that dependency. Flag modules with zero
+integration/contract coverage — especially raw-SQL query builders and middleware
+on the request hot path (a bug there 500s every request).
+
+**Why it recurs:** mocks are faster to write and keep unit tests hermetic; the
+real-contract test is "added later" and never is, so schema drift goes unseen.
+
+**Manifested as (discogorama-recs):** `/enrichment/lookup` 500s on every real call
+(misaliased CTE column) — *"live SQL bug behind mock-only tests"*; `/auth/register`
+500s on fresh install (missing schema); `RateLimitMiddleware` `AttributeError` on
+every API request.
+
+---
+
+## P8 — Silent data-loss / incomplete mapping in ETL
+
+**Generic defect:** A transform/ingest step reads a source record and persists only
+a subset of its fields, silently dropping the rest — no error, no warning. The loss
+is invisible until someone queries the missing data downstream.
+
+**Invariants to check:**
+1. **Account for every source field.** Fields read from the source but never
+   written to the destination are detected (schema diff, completeness assertion),
+   not silently dropped.
+2. **Completeness is observable.** Post-ingest, populated-row counts per column are
+   checked; a column that is NULL across the whole corpus is an alarm, not normal.
+3. **Safe-by-default on regression** (see also P5): a parser regression or partial
+   parse must not overwrite populated destination data with empty/NULL via upsert.
+
+**Detection heuristic:** Find parse/transform → persist mappings. Flag source keys
+that are read (or present in the source schema) but never written. Flag upserts
+that unconditionally set columns derivable from a fragile parse.
+
+**Why it recurs:** the mapping is written against a few sample records; fields
+absent from the samples (or added later to the source) are never wired through.
+
+**Manifested as (discogorama-recs):** Discogs ingest silently drops 5 fields
+(labels, notes, identifiers, extra_artists, label_ids) — NULL across all 18.4M
+rows; monthly upsert wipes destination data when the parser regresses (#167).
+
+---
+
+## P9 — DB schema/type-contract drift in raw SQL
+
+**Generic defect:** Raw SQL built as strings assumes a schema the database doesn't
+actually have — a column name that doesn't exist or is aliased differently, a value
+written into an incompatible column type, a table/column missing on a fresh
+install. The compiler/type-checker can't see inside the SQL string, so it ships.
+
+**Invariants to check:**
+1. **Column references resolve.** Names used in `ORDER BY`/`WHERE`/`JOIN` (and CTE
+   chains) match the columns actually projected upstream — watch alias drift across
+   CTEs.
+2. **Types match.** Values bound/inserted match the destination column type (no
+   string into a `bigint`, no implicit-cast-that-aborts).
+3. **Schema exists where assumed.** Migrations create every table/column the code
+   queries, including on a fresh install.
+
+**Detection heuristic:** Find raw-SQL strings and ORM raw writes. Cross-check column
+names against the schema/migrations; flag unqualified or re-aliased columns in
+multi-CTE queries; flag inserts whose value type can mismatch the column. Pairs
+with P7 — these are exactly what mock-only tests miss.
+
+**Why it recurs:** SQL lives in strings outside the type system; a refactor renames
+or re-aliases a column in one CTE and the downstream reference rots silently.
+
+**Manifested as (discogorama-recs):** `column "master_id" does not exist` —
+unqualified ref vs `discogs_master_id` alias in the `ranked` CTE; `parent_label`
+string inserted into a `bigint` column → repeated insert aborts; fresh-install
+auth schema missing.
