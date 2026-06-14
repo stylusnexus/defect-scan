@@ -149,3 +149,27 @@ setup() {
       "$BATS_TEST_DIRNAME/fixtures/python/app/bug.py"
   [[ "$output" == *"E722"* ]]
 }
+
+@test "triage: scales to a large file list in one pass (no per-file git)" {
+  repo="$BATS_TEST_TMPDIR/big"
+  mkdir -p "$repo" && cd "$repo" && git init -q
+  echo seed > seed.txt && git add . && git -c user.email=t@t -c user.name=t commit -qm init
+  # 300 path names, mostly untracked (churn 0) — must still return 300 ranked lines
+  run bash -c "for i in \$(seq 1 300); do echo file_\$i.ts; done | '$DETECT' triage '$repo'"
+  [ "$status" -eq 0 ]
+  [ "${#lines[@]}" -eq 300 ]
+  [[ "${lines[0]}" == *$'\t'* ]]
+}
+
+@test "triage: skips directories without aborting the ranking (getline i/o guard)" {
+  repo="$BATS_TEST_TMPDIR/withdir"
+  mkdir -p "$repo/adir" && cd "$repo" && git init -q
+  echo code > real.py && echo more > zzz.py
+  git add . && git -c user.email=t@t -c user.name=t commit -qm init
+  # input mixes a directory between two real files; all real files must survive
+  run bash -c "printf 'real.py\nadir\nzzz.py\n' | '$DETECT' triage '$repo'"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"real.py"* ]]
+  [[ "$output" == *"zzz.py"* ]]
+  [[ "$output" != *$'\t'adir ]]   # the directory is not ranked
+}

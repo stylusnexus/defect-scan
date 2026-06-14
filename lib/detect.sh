@@ -86,17 +86,35 @@ cmd_scope() {
 cmd_triage() {
   cwd="${1:-$PWD}"
   cd "$cwd" || return 1
-  secre='auth|login|session|password|secret|token|crypto|query|sql|exec|eval|admin|payment'
+  # Churn in ONE git pass (not per-file): count commits touching each path.
+  # Per-file `git log` does not scale — a 16k-file repo means 16k git processes,
+  # each walking full history. One `--name-only` pass + tally is O(history) once.
+  churn_file="$(mktemp 2>/dev/null || echo "/tmp/defect-scan-churn.$$")"
+  git log --name-only --pretty=format: 2>/dev/null | sed '/^$/d' | sort | uniq -c \
+    > "$churn_file" 2>/dev/null || : > "$churn_file"
+  # Drop directories (incl. symlinks to dirs) before awk: getline on a directory
+  # is a fatal i/o error in BSD awk and would truncate the ranking. The test is a
+  # shell builtin (no subprocess), so it stays fast on large repos. Non-existent
+  # paths are kept (ranked with loc=0) so callers can triage not-yet-written files.
   while IFS= read -r f; do
     [ -n "$f" ] || continue
-    churn="$(git log --oneline -- "$f" 2>/dev/null | wc -l | tr -d ' ')"
-    [ -n "$churn" ] || churn=0
-    if [ -f "$f" ]; then loc="$(wc -l < "$f" 2>/dev/null | tr -d ' ')"; else loc=0; fi
-    [ -n "$loc" ] || loc=0
-    if printf '%s' "$f" | grep -qiE "$secre"; then sec=10; else sec=0; fi
-    score=$(( churn * 3 + sec + loc / 50 ))
-    printf '%s\t%s\n' "$score" "$f"
-  done | sort -rn -k1,1
+    [ -d "$f" ] && continue
+    printf '%s\n' "$f"
+  done | awk '
+    NR==FNR {
+      cnt=$1
+      sub(/^[[:space:]]*[0-9]+[[:space:]]+/, "")   # strip "  N " -> bare path
+      churn[$0]=cnt; next
+    }
+    {
+      f=$0; if (f=="") next
+      ch=(f in churn)?churn[f]:0
+      loc=0; while ((getline line < f) > 0) loc++; close(f)
+      sec=(tolower(f) ~ /auth|login|session|password|secret|token|crypto|query|sql|exec|eval|admin|payment/)?10:0
+      printf "%d\t%s\n", ch*3 + sec + int(loc/50), f
+    }
+  ' "$churn_file" - | sort -rn -k1,1
+  rm -f "$churn_file"
 }
 
 main() {
