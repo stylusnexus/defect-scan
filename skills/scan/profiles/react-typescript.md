@@ -9,6 +9,9 @@ then global). Skip-with-hint if unresolved. **Run from the project root** so
 config (flat `eslint.config.*` / `tsconfig.json`) resolves.
 - `tsc --noEmit`                              — type errors (whole project).
 - `eslint --format json <files>`              — lint/correctness rules.
+Optional (deeper, run if installed):
+- `npm audit --json`                          — known-vuln dependencies; High.
+- `osv-scanner --format json -r <dir>`        — cross-ecosystem vuln scan; High.
 
 **ESLint exit codes are not all "problems" — read them:**
 - `0` → clean. `1` → lint problems found; parse the JSON.
