@@ -12,6 +12,9 @@ confidence tiers (correlated against the issue tracker). Report-only by default;
 skills/scan/                   # the skill — invoked as /defect-scan:scan
   SKILL.md  profiles/  patterns/  baseline-categories.md  report-format.md
   lib/detect.sh                # deterministic plumbing (scope/stacks/tool/triage/issues)
+commands/help.md               # /defect-scan:help
+hooks/                         # opt-in pre-commit advisory (hooks.json + pre-commit-scan.sh)
+scripts/setup-optional-tools.sh# one-liner installer for the optional analyzers
 tests/                         # bats suite (run: bats tests/detect.bats)
 specs/  plans/                 # design + implementation history
 ```
@@ -19,9 +22,12 @@ specs/  plans/                 # design + implementation history
 ## Install (team, via marketplace)
 ```
 /plugin marketplace add stylusnexus/agent-plugins
-/plugin install defect-scan@agent-plugins
+/plugin install defect-scan@stylus-nexus
 ```
-Then invoke with `/defect-scan:scan` (or let the model auto-invoke it).
+The repo is `stylusnexus/agent-plugins`; the marketplace **name** is `stylus-nexus`
+— so the install suffix is `@stylus-nexus`, not `@agent-plugins`. Then invoke with
+`/defect-scan:scan` (or let the model auto-invoke it). If a fresh install reports
+"not found," run `/plugin marketplace update stylus-nexus` first (stale cache).
 
 ## Help
 `/defect-scan:help` prints usage, flags, and what it uses.
