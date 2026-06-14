@@ -65,6 +65,16 @@ resolve, record it as **missing** with the profile's install hint and continue �
 never abort the scan. If a tool crashes or times out, capture stderr, mark that
 check **inconclusive**, and continue.
 
+**Cross-cutting deep analyzers (optional, any stack — run if installed).** These
+sharpen ground truth for the reasoning categories tools usually miss; resolve each
+via `lib/detect.sh tool <name>` and skip-with-hint if absent:
+- **`semgrep`** — `semgrep --config auto --json <paths>` — multi-language taint
+  rules covering injection (cat#3), subprocess/argv hygiene (P4), and SQL misuse
+  (P9). The single highest-value optional add. Findings are **High** (tool-confirmed).
+- **`gitleaks`** — `gitleaks detect --no-git --report-format json` — committed
+  secrets/credentials (cat#3-adjacent supply-chain). Any hit is **High**.
+Install hints: `brew install semgrep gitleaks` (or `pipx install semgrep`).
+
 **Read exit codes — do not equate "ran" with "clean."** A non-zero exit that means
 *problems found* (e.g. eslint `1`, tsc with diagnostics) is data to parse. A
 non-zero exit that means *tool/usage/config error* (e.g. eslint `2`, "No files
