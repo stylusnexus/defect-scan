@@ -12,9 +12,15 @@ the defect knowledge is in `profiles/`, `baseline-categories.md`, and
 
 ## Arguments
 - (no arg) → scan recent changes. `<path>` → scan that file/dir. `--full` → whole repo.
+- `--depth N` → deep-reason the top **N** triaged source files (default **20**).
+  `--depth 0` / `--full` with no cap means everything (expensive). The rest are
+  tool-scanned only. This is the rabbit-hole floor — without it, a large repo
+  deep-reasons until it exhausts the budget.
 - `--fix` → apply the high-confidence tier, then re-run the tool to confirm.
 - `--fix-all` → also apply the medium tier (after confirmation prompts).
 - `--lang <profile>` → force a profile, skip detection.
+- `--no-correlate` → skip the tracker-correlation stage (Stage 4a). Correlation is
+  **on by default** when a GitHub remote and `gh` are available.
 - `--help` → print this usage and exit; do not scan.
 
 ## Stage 1 — Detect
@@ -34,9 +40,14 @@ lib/detect.sh scope ... | tail -n +2 | lib/detect.sh triage "<repo-root>"
 This scores each file by git churn, size (LOC), and security-sensitive
 path/name matches, printing `<score>\tpath` highest-first. It ranks **source
 files only** (docs/config/data are excluded, so high-churn `.md`/`.json` can't
-out-rank code). Process files in that order. On `--full` or any large file set, focus the reasoning pass on the top of
-the ranking and note in the report that lower-ranked files were tool-scanned but
-not deep-reasoned (honest-about-coverage). On a single-file target this is a
+out-rank code). Take the top **N** (`--depth N`, default 20) for the deep
+reasoning pass:
+```
+... | lib/detect.sh triage "<repo-root>" | head -n "${DEPTH:-20}"
+```
+Lower-ranked files are tool-scanned only, not deep-reasoned — this is the
+rabbit-hole floor. Record in the report header how many of how many ranked files
+the deep pass reached (honest-about-coverage). On a single-file target this is a
 trivial pass-through. Never silently drop files — always say how far the deep
 pass reached.
 
@@ -70,6 +81,26 @@ Tool-confirmed findings are **High** by definition.
 Merge tool + reasoning findings, dedupe by `file:line + category`, rank by
 tier then severity, and emit using `report-format.md`. Always print the header
 with tools-run vs tools-missing and how far triage's deep pass reached.
+
+### Stage 4a — Correlate with the tracker (on by default; `--no-correlate` to skip)
+Before presenting (and before filing/fixing), cross-check each finding against
+existing issues so you neither re-report nor re-file a known defect:
+```
+lib/detect.sh issues "<key terms from the finding: file/symbol + defect words>"
+```
+This is **search-driven** (one targeted query per finding, capped at
+`DEFECT_SCAN_ISSUE_LIMIT`) — it must not bulk-pull, because `gh`'s default list
+cap is 30 and real repos have thousands of issues. Reason over the returned
+candidates (don't string-match) and tag each finding:
+- **[NEW]** — no matching issue.
+- **[LIKELY FILED #N]** — an open issue describes this same defect; don't re-file,
+  point at #N.
+- **[RELATED #N]** — same family/root cause, different instance (e.g. the
+  `billing-integrity` cluster); link it.
+- A **closed** match → **[VERIFY REGRESSION #N]**: previously fixed; flag that it
+  may have regressed.
+If correlation is unavailable (no `gh`/remote — exit 3), say so in the header and
+treat every finding as uncorrelated; never imply NEW when you simply couldn't check.
 
 ### Fixing (only when --fix / --fix-all)
 - **Refuse if the working tree is dirty** (uncommitted changes) unless the user

@@ -199,3 +199,33 @@ setup() {
 @test "SKILL.md reasoning pass consults patterns/recurring.md" {
   grep -q "patterns/recurring.md" "$BATS_TEST_DIRNAME/../SKILL.md"
 }
+
+@test "issues: requires at least one keyword" {
+  run "$DETECT" issues
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"usage:"* ]]
+}
+
+@test "issues: formats gh results as '#num<TAB>state<TAB>title'" {
+  export DEFECT_SCAN_GH="$BATS_TEST_DIRNAME/fixtures/gh-stub/gh"
+  run "$DETECT" issues credit refund
+  [ "$status" -eq 0 ]
+  [[ "${lines[0]}" == "#5421"$'\t'"OPEN"$'\t'* ]]
+  [[ "${lines[1]}" == "#1274"$'\t'"CLOSED"$'\t'* ]]
+}
+
+@test "issues: degrades cleanly (exit 3, skip message, no issue rows) when gh unavailable" {
+  export DEFECT_SCAN_GH="/nonexistent/gh-binary-xyz"
+  run "$DETECT" issues credit          # bats merges stderr into $output
+  [ "$status" -eq 3 ]
+  [[ "$output" == *"gh not available"* ]]
+  [[ "$output" != *"#"* ]]             # no issue rows emitted to stdout
+}
+
+@test "SKILL.md documents depth cap and correlation stage" {
+  f="$BATS_TEST_DIRNAME/../SKILL.md"
+  grep -q -- "--depth N" "$f"
+  grep -q "Stage 4a — Correlate" "$f"
+  grep -q "detect.sh issues" "$f"
+  grep -q -- "--no-correlate" "$f"
+}

@@ -106,6 +106,17 @@ defect-scan/
     recurring.md          # battle-tested cross-cutting patterns distilled from real incidents
 ```
 
+**Depth cap & tracker correlation (added post-dogfood):**
+- **Depth cap** — `--depth N` (default 20) bounds the reasoning pass to the top-N
+  triaged source files; the rest are tool-scanned only. This is the rabbit-hole
+  floor: without it, a large repo deep-reasons until it exhausts budget.
+- **Tracker correlation** (Stage 4a, on by default; `--no-correlate` to skip) —
+  `lib/detect.sh issues "<terms>"` runs a **search-driven** `gh` query (one per
+  finding, capped — never a bulk pull, since `gh`'s default cap is 30 and real
+  repos have thousands of issues) and tags each finding `NEW` / `LIKELY FILED #N` /
+  `RELATED #N` / `VERIFY REGRESSION #N` (closed match). Degrades cleanly (exit 3)
+  when `gh`/remote is absent — correlation is an enhancement, never a hard dep.
+
 Each **profile** declares:
 - **Detection signals** — files/extensions that select it.
 - **Ordered toolchain** — the exact command(s) to run, and how to read each tool's output.
