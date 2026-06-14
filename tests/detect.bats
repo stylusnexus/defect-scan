@@ -27,3 +27,21 @@ setup() {
   [ "$status" -eq 0 ]
   [ "$output" = "generic" ]
 }
+
+@test "tool: prefers project-local node_modules/.bin over global" {
+  run "$DETECT" tool eslint "$BATS_TEST_DIRNAME/fixtures/local-eslint"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"fixtures/local-eslint/node_modules/.bin/eslint" ]]
+}
+
+@test "tool: falls back to global PATH when no local binary" {
+  run "$DETECT" tool sh "$BATS_TEST_DIRNAME/fixtures/empty"
+  [ "$status" -eq 0 ]
+  [ -x "$output" ]
+}
+
+@test "tool: exits 1 and prints nothing when unresolved" {
+  run "$DETECT" tool no_such_tool_xyz "$BATS_TEST_DIRNAME/fixtures/empty"
+  [ "$status" -eq 1 ]
+  [ -z "$output" ]
+}

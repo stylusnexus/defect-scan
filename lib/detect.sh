@@ -21,7 +21,26 @@ cmd_stacks() {
   [ -n "$found" ] || found="generic"
   for p in $found; do echo "$p"; done
 }
-cmd_tool()   { :; }   # implemented in Task 3
+cmd_tool() {
+  name="${1:?usage: detect.sh tool <name> [cwd]}"
+  cwd="${2:-$PWD}"
+  # 1. JS/TS project-local
+  if [ -x "$cwd/node_modules/.bin/$name" ]; then
+    echo "$cwd/node_modules/.bin/$name"; return 0
+  fi
+  # 2. Python venv (active env, then project .venv)
+  if [ -n "${VIRTUAL_ENV:-}" ] && [ -x "$VIRTUAL_ENV/bin/$name" ]; then
+    echo "$VIRTUAL_ENV/bin/$name"; return 0
+  fi
+  if [ -x "$cwd/.venv/bin/$name" ]; then
+    echo "$cwd/.venv/bin/$name"; return 0
+  fi
+  # 3. Global PATH
+  if command -v "$name" >/dev/null 2>&1; then
+    command -v "$name"; return 0
+  fi
+  return 1
+}
 cmd_scope()  { :; }   # implemented in Task 4
 
 main() {
