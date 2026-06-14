@@ -34,6 +34,11 @@ Baseline categories specialized:
   render, race between async effect and unmount.
 React-specific: missing `key` in lists, conditional hook calls, derived-state-in-
 effect anti-pattern, hydration mismatches (non-deterministic render output).
+Rules-of-hooks / purity (React 18/19) — recurs in real codebases, eslint
+`react-hooks/*` confirms many: `setState` inside an effect with no guard (render
+loop), impure calls during render (`performance.now`, `Date.now`, `Math.random`),
+reading/writing a ref during render, and breaking manual memoization. These are
+behavior-relevant and **not** auto-fix-safe — surface for human review.
 
 ## Auto-fix-safe
 Only `eslint`-confirmed rules invoked with `--fix` AND in the safe set
