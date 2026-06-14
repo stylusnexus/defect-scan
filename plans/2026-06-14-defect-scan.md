@@ -49,6 +49,7 @@ defect-scan-skill/                 # git repo = source of truth
 - `detect.sh stacks <dir>` → prints one profile name per line (`react-typescript`, `python`, `generic`); `generic` only when nothing else matched.
 - `detect.sh tool <name> [<cwd>]` → prints the resolved absolute invocation path (project-local-first), exit 0; prints nothing, exit 1 if unresolved.
 - `detect.sh scope [<target>] [--full] [<cwd>]` → first line `MODE=changes|path|full`, then one repo-relative file path per line.
+- `detect.sh triage <cwd>` → reads repo-relative file paths on **stdin** (the scope file list, MODE line stripped), prints `<score>\t<path>` lines sorted by score descending. Score = `churn*3 + security_hit*10 + loc/50` (integer). Composes as `detect.sh scope ... | tail -n +2 | detect.sh triage <cwd>`.
 
 ---
 
@@ -434,6 +435,85 @@ git commit -m "feat(defect-scan): adaptive scope resolution (changes/path/full)"
 
 ---
 
+## Task 4b: Triage ranking (`detect.sh triage`)
+
+**Files:**
+- Modify: `lib/detect.sh` (implement `cmd_triage`)
+- Modify: `tests/detect.bats`
+
+Reads repo-relative file paths on stdin, scores each by
+`churn*3 + security_hit*10 + loc/50`, prints `<score>\t<path>` sorted descending.
+`churn` = number of commits touching the file (`git log --oneline -- <file> | wc -l`).
+`security_hit` = 1 if the path matches the security keyword regex, else 0.
+`loc` = `wc -l` of the file (0 if unreadable/missing).
+
+- [ ] **Step 1: Add failing tests using a throwaway git repo with churn + a security-named file**
+
+```bash
+@test "triage: ranks a security-named, churned file above a quiet plain file" {
+  repo="$BATS_TEST_TMPDIR/triage"
+  mkdir -p "$repo" && cd "$repo" && git init -q
+  printf 'a\nb\nc\n' > auth.py && echo x > util.py
+  git add . && git -c user.email=t@t -c user.name=t commit -qm init
+  echo more >> auth.py && git -c user.email=t@t -c user.name=t commit -qam c2
+  echo again >> auth.py && git -c user.email=t@t -c user.name=t commit -qam c3
+  run bash -c "printf 'auth.py\nutil.py\n' | '$DETECT' triage '$repo'"
+  [ "$status" -eq 0 ]
+  [[ "${lines[0]}" == *"auth.py" ]]      # highest score first
+  [[ "${lines[1]}" == *"util.py" ]]
+}
+
+@test "triage: output is <score>TAB<path> and sorted descending" {
+  repo="$BATS_TEST_TMPDIR/triage2"
+  mkdir -p "$repo" && cd "$repo" && git init -q
+  echo x > a.py && echo y > login_handler.py
+  git add . && git -c user.email=t@t -c user.name=t commit -qm init
+  run bash -c "printf 'a.py\nlogin_handler.py\n' | '$DETECT' triage '$repo'"
+  [ "$status" -eq 0 ]
+  s0="$(printf '%s' "${lines[0]}" | cut -f1)"
+  s1="$(printf '%s' "${lines[1]}" | cut -f1)"
+  [ "$s0" -ge "$s1" ]
+  [[ "${lines[0]}" == *$'\t'* ]]
+}
+```
+
+- [ ] **Step 2: Run `bats tests/detect.bats`; confirm the 2 new tests FAIL.**
+
+- [ ] **Step 3: Implement `cmd_triage` in `lib/detect.sh`**
+
+```sh
+cmd_triage() {
+  cwd="${1:-$PWD}"
+  cd "$cwd" || return 1
+  secre='auth|login|session|password|secret|token|crypto|query|sql|exec|eval|admin|payment'
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    churn="$(git log --oneline -- "$f" 2>/dev/null | wc -l | tr -d ' ')"
+    [ -n "$churn" ] || churn=0
+    if [ -f "$f" ]; then loc="$(wc -l < "$f" 2>/dev/null | tr -d ' ')"; else loc=0; fi
+    [ -n "$loc" ] || loc=0
+    if printf '%s' "$f" | grep -qiE "$secre"; then sec=10; else sec=0; fi
+    score=$(( churn * 3 + sec + loc / 50 ))
+    printf '%s\t%s\n' "$score" "$f"
+  done | sort -rn -k1,1
+}
+```
+Add the `triage)` arm to the `main()` dispatcher's `case`:
+```sh
+    triage) cmd_triage "$@" ;;
+```
+
+- [ ] **Step 4: Run `bats tests/detect.bats`; confirm ALL pass.**
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add lib/detect.sh tests/detect.bats
+git commit -m "feat(defect-scan): triage ranking by churn/size/security-sensitivity"
+```
+
+---
+
 ## Task 5: Baseline categories and report format (Markdown)
 
 **Files:**
@@ -669,9 +749,10 @@ description: Use to hunt latent defects in code — a file, directory, diff, or 
 
 # defect-scan
 
-Language-aware defect hunter. Four stages: **detect → tool pass → reasoning pass →
-report (→ fix)**. The deterministic plumbing is `lib/detect.sh`; the defect
-knowledge is in `profiles/`, `baseline-categories.md`, and `report-format.md`.
+Language-aware defect hunter. Five stages: **detect → triage → tool pass →
+reasoning pass → report (→ fix)**. The deterministic plumbing is `lib/detect.sh`;
+the defect knowledge is in `profiles/`, `baseline-categories.md`, and
+`report-format.md`.
 
 ## Arguments
 - (no arg) → scan recent changes. `<path>` → scan that file/dir. `--full` → whole repo.
@@ -688,6 +769,19 @@ lib/detect.sh stacks "<repo-root>"                                 # one profile
 ```
 A repo may match multiple profiles; run each matched profile over its own files.
 `--lang` overrides detection.
+
+## Stage 1b — Triage (approach a large codebase methodically)
+Rank the in-scope files so the deep passes hit the highest-risk code first:
+```
+lib/detect.sh scope ... | tail -n +2 | lib/detect.sh triage "<repo-root>"
+```
+This scores each file by git churn, size (LOC), and security-sensitive
+path/name matches, printing `<score>\tpath` highest-first. Process files in that
+order. On `--full` or any large file set, focus the reasoning pass on the top of
+the ranking and note in the report that lower-ranked files were tool-scanned but
+not deep-reasoned (honest-about-coverage). On a single-file target this is a
+trivial pass-through. Never silently drop files — always say how far the deep
+pass reached.
 
 ## Stage 2 — Tool pass
 For each profile, read its `## Toolchain`. Resolve every tool with
@@ -739,9 +833,10 @@ user to `systematic-debugging` (root-cause a specific one) or
   grep -qE '^description: ' "$f"
 }
 
-@test "SKILL.md documents all four stages and the fix-safety gate" {
+@test "SKILL.md documents all stages (incl. triage) and the fix-safety gate" {
   f="$BATS_TEST_DIRNAME/../SKILL.md"
   grep -q "Stage 1 — Detect" "$f"
+  grep -q "Stage 1b — Triage" "$f"
   grep -q "Stage 2 — Tool pass" "$f"
   grep -q "Stage 3 — Reasoning pass" "$f"
   grep -q "Stage 4 — Report" "$f"

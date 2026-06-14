@@ -1,0 +1,10 @@
+tests/fixtures/**/node_modules/
+*.tmp
+.DS_Store
+
+# Personal VS Code workspace file (user-specific; shared settings live in .vscode/)
+defect-scan.code-workspace
+
+# tooling caches / agent scratch
+.ruff_cache/
+.claude/agent-memory/

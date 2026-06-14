@@ -57,11 +57,22 @@ later is one new profile file — no change to the orchestration.
 
 ---
 
-## Architecture — four stages
+## Architecture — five stages
 
 1. **Detect** — identify stack(s) from manifests/extensions
    (`package.json` + `tsconfig` → React/TS; `pyproject.toml`/`.py` → Python;
    otherwise generic). A repo can match multiple profiles; all matched profiles run.
+1b. **Triage** — rank the in-scope files so a large codebase is approached
+   methodically (scan what's most likely to harbor defects first, rather than
+   uniformly). A built-in, deterministic heuristic scores each file by a composite
+   of **git churn** (how often it changes), **size/complexity** (LOC), and
+   **security-sensitive path/name matches** (auth, login, session, password,
+   secret, token, crypto, query, sql, exec, eval, admin, payment). Deep passes
+   process files in priority order; `--full` still covers everything but
+   highest-risk first. Triage ranks **source files only** — docs/config/data are
+   excluded so high-churn non-code (e.g. `.md` memory files) can't out-rank
+   source. Triage is most impactful on `--full`/large scopes and is a no-op-ish
+   pass-through on a one-file target.
 2. **Tool pass** — for each detected profile, discover which of its analyzers are
    actually installed, run them on the target, capture structured output.
    Missing tools are noted, not fatal. **Tool resolution is project-local-first:**
@@ -91,7 +102,20 @@ defect-scan/
     generic.md            # language-agnostic fallback (the 5 baseline categories)
   baseline-categories.md  # the 5 cross-cutting defect types, referenced by every profile
   report-format.md        # the ranked-findings template + confidence-tier definitions
+  patterns/
+    recurring.md          # battle-tested cross-cutting patterns distilled from real incidents
 ```
+
+**Depth cap & tracker correlation (added post-dogfood):**
+- **Depth cap** — `--depth N` (default 20) bounds the reasoning pass to the top-N
+  triaged source files; the rest are tool-scanned only. This is the rabbit-hole
+  floor: without it, a large repo deep-reasons until it exhausts budget.
+- **Tracker correlation** (Stage 4a, on by default; `--no-correlate` to skip) —
+  `lib/detect.sh issues "<terms>"` runs a **search-driven** `gh` query (one per
+  finding, capped — never a bulk pull, since `gh`'s default cap is 30 and real
+  repos have thousands of issues) and tags each finding `NEW` / `LIKELY FILED #N` /
+  `RELATED #N` / `VERIFY REGRESSION #N` (closed match). Degrades cleanly (exit 3)
+  when `gh`/remote is absent — correlation is an enhancement, never a hard dep.
 
 Each **profile** declares:
 - **Detection signals** — files/extensions that select it.
