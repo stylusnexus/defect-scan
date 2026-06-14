@@ -49,8 +49,8 @@ check **inconclusive**, and continue.
 
 ## Stage 3 — Reasoning pass
 Read the in-scope files against the profile's `## Reasoning checklist` and
-`baseline-categories.md`. For EVERY reasoning-only finding, run an **adversarial
-verification** pass before ranking: state the strongest case that the finding is
+`baseline-categories.md`. For EVERY reasoning-only finding, run an
+**adversarial verification** pass before ranking: state the strongest case that the finding is
 NOT a real defect (guard exists elsewhere, input is trusted, path unreachable).
 - Survives with a clear repro path → eligible for **High**.
 - Survives but no clear repro → **Medium**.
