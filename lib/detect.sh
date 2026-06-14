@@ -92,13 +92,22 @@ cmd_triage() {
   churn_file="$(mktemp 2>/dev/null || echo "/tmp/defect-scan-churn.$$")"
   git log --name-only --pretty=format: 2>/dev/null | sed '/^$/d' | sort | uniq -c \
     > "$churn_file" 2>/dev/null || : > "$churn_file"
-  # Drop directories (incl. symlinks to dirs) before awk: getline on a directory
-  # is a fatal i/o error in BSD awk and would truncate the ranking. The test is a
-  # shell builtin (no subprocess), so it stays fast on large repos. Non-existent
-  # paths are kept (ranked with loc=0) so callers can triage not-yet-written files.
+  # Pre-filter before awk. Two jobs, both shell builtins (no subprocess) so they
+  # stay fast on large repos:
+  #  1. Drop directories (incl. symlinks to dirs): getline on a directory is a
+  #     fatal i/o error in BSD awk and would truncate the ranking.
+  #  2. Keep only source extensions: defect-scan targets code, so docs/config/data
+  #     (e.g. high-churn .md memory files) must not out-rank source. Non-existent
+  #     paths with a source extension are kept (ranked loc=0) so callers can triage
+  #     not-yet-written files.
   while IFS= read -r f; do
     [ -n "$f" ] || continue
     [ -d "$f" ] && continue
+    case "$f" in
+      *.ts|*.tsx|*.js|*.jsx|*.mjs|*.cjs|*.py|*.pyi|*.go|*.rs|*.c|*.cc|*.cpp|*.cxx|\
+      *.h|*.hpp|*.hh|*.cs|*.java|*.rb|*.php|*.swift|*.kt|*.kts|*.scala|*.sh|*.bash) ;;
+      *) continue ;;
+    esac
     printf '%s\n' "$f"
   done | awk '
     NR==FNR {

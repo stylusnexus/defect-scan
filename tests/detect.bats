@@ -173,3 +173,19 @@ setup() {
   [[ "$output" == *"zzz.py"* ]]
   [[ "$output" != *$'\t'adir ]]   # the directory is not ranked
 }
+
+@test "triage: ranks only source files, excludes docs/config/data" {
+  repo="$BATS_TEST_TMPDIR/srcfilter"
+  mkdir -p "$repo" && cd "$repo" && git init -q
+  echo code > app.py && echo ui > widget.tsx
+  echo doc > README.md && echo cfg > package.json && echo note > notes.txt
+  git add . && git -c user.email=t@t -c user.name=t commit -qm init
+  run bash -c "printf 'README.md\napp.py\npackage.json\nwidget.tsx\nnotes.txt\n' | '$DETECT' triage '$repo'"
+  [ "$status" -eq 0 ]
+  [ "${#lines[@]}" -eq 2 ]                 # only the 2 source files ranked
+  [[ "$output" == *"app.py"* ]]
+  [[ "$output" == *"widget.tsx"* ]]
+  [[ "$output" != *"README.md"* ]]
+  [[ "$output" != *"package.json"* ]]
+  [[ "$output" != *"notes.txt"* ]]
+}

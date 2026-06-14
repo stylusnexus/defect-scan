@@ -69,8 +69,10 @@ later is one new profile file — no change to the orchestration.
    **security-sensitive path/name matches** (auth, login, session, password,
    secret, token, crypto, query, sql, exec, eval, admin, payment). Deep passes
    process files in priority order; `--full` still covers everything but
-   highest-risk first. Triage is most impactful on `--full`/large scopes and is a
-   no-op-ish pass-through on a one-file target.
+   highest-risk first. Triage ranks **source files only** — docs/config/data are
+   excluded so high-churn non-code (e.g. `.md` memory files) can't out-rank
+   source. Triage is most impactful on `--full`/large scopes and is a no-op-ish
+   pass-through on a one-file target.
 2. **Tool pass** — for each detected profile, discover which of its analyzers are
    actually installed, run them on the target, capture structured output.
    Missing tools are noted, not fatal. **Tool resolution is project-local-first:**

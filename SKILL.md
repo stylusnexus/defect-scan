@@ -32,8 +32,9 @@ Rank the in-scope files so the deep passes hit the highest-risk code first:
 lib/detect.sh scope ... | tail -n +2 | lib/detect.sh triage "<repo-root>"
 ```
 This scores each file by git churn, size (LOC), and security-sensitive
-path/name matches, printing `<score>\tpath` highest-first. Process files in that
-order. On `--full` or any large file set, focus the reasoning pass on the top of
+path/name matches, printing `<score>\tpath` highest-first. It ranks **source
+files only** (docs/config/data are excluded, so high-churn `.md`/`.json` can't
+out-rank code). Process files in that order. On `--full` or any large file set, focus the reasoning pass on the top of
 the ranking and note in the report that lower-ranked files were tool-scanned but
 not deep-reasoned (honest-about-coverage). On a single-file target this is a
 trivial pass-through. Never silently drop files — always say how far the deep
