@@ -83,13 +83,30 @@ cmd_scope() {
   printf '%s\n' "$changed" | sort -u | sed '/^$/d'
 }
 
+cmd_triage() {
+  cwd="${1:-$PWD}"
+  cd "$cwd" || return 1
+  secre='auth|login|session|password|secret|token|crypto|query|sql|exec|eval|admin|payment'
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    churn="$(git log --oneline -- "$f" 2>/dev/null | wc -l | tr -d ' ')"
+    [ -n "$churn" ] || churn=0
+    if [ -f "$f" ]; then loc="$(wc -l < "$f" 2>/dev/null | tr -d ' ')"; else loc=0; fi
+    [ -n "$loc" ] || loc=0
+    if printf '%s' "$f" | grep -qiE "$secre"; then sec=10; else sec=0; fi
+    score=$(( churn * 3 + sec + loc / 50 ))
+    printf '%s\t%s\n' "$score" "$f"
+  done | sort -rn -k1,1
+}
+
 main() {
   sub="${1:-}"; [ $# -gt 0 ] && shift || true
   case "$sub" in
-    stacks) cmd_stacks "$@" ;;
-    tool)   cmd_tool "$@" ;;
-    scope)  cmd_scope "$@" ;;
-    *) echo "usage: detect.sh {stacks|tool|scope} ..." >&2; return 2 ;;
+    stacks)  cmd_stacks "$@" ;;
+    tool)    cmd_tool "$@" ;;
+    scope)   cmd_scope "$@" ;;
+    triage)  cmd_triage "$@" ;;
+    *) echo "usage: detect.sh {stacks|tool|scope|triage} ..." >&2; return 2 ;;
   esac
 }
 main "$@"

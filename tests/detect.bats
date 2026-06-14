@@ -77,3 +77,29 @@ setup() {
   [[ "${lines[0]}" == "MODE=changes" ]]
   [[ "$output" == *"f.txt"* && "$output" == *"g.txt"* ]]
 }
+
+@test "triage: ranks a security-named, churned file above a quiet plain file" {
+  repo="$BATS_TEST_TMPDIR/triage"
+  mkdir -p "$repo" && cd "$repo" && git init -q
+  printf 'a\nb\nc\n' > auth.py && echo x > util.py
+  git add . && git -c user.email=t@t -c user.name=t commit -qm init
+  echo more >> auth.py && git -c user.email=t@t -c user.name=t commit -qam c2
+  echo again >> auth.py && git -c user.email=t@t -c user.name=t commit -qam c3
+  run bash -c "printf 'auth.py\nutil.py\n' | '$DETECT' triage '$repo'"
+  [ "$status" -eq 0 ]
+  [[ "${lines[0]}" == *"auth.py" ]]
+  [[ "${lines[1]}" == *"util.py" ]]
+}
+
+@test "triage: output is <score>TAB<path> and sorted descending" {
+  repo="$BATS_TEST_TMPDIR/triage2"
+  mkdir -p "$repo" && cd "$repo" && git init -q
+  echo x > a.py && echo y > login_handler.py
+  git add . && git -c user.email=t@t -c user.name=t commit -qm init
+  run bash -c "printf 'a.py\nlogin_handler.py\n' | '$DETECT' triage '$repo'"
+  [ "$status" -eq 0 ]
+  s0="$(printf '%s' "${lines[0]}" | cut -f1)"
+  s1="$(printf '%s' "${lines[1]}" | cut -f1)"
+  [ "$s0" -ge "$s1" ]
+  [[ "${lines[0]}" == *$'\t'* ]]
+}
