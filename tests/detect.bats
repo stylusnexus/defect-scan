@@ -124,3 +124,20 @@ setup() {
     grep -qE '^## Auto-fix-safe'       "$f"
   done
 }
+
+@test "SKILL.md has name and description front matter" {
+  f="$BATS_TEST_DIRNAME/../SKILL.md"
+  grep -qE '^name: defect-scan$' "$f"
+  grep -qE '^description: ' "$f"
+}
+
+@test "SKILL.md documents all stages (incl. triage) and the fix-safety gate" {
+  f="$BATS_TEST_DIRNAME/../SKILL.md"
+  grep -q "Stage 1 — Detect" "$f"
+  grep -q "Stage 1b — Triage" "$f"
+  grep -q "Stage 2 — Tool pass" "$f"
+  grep -q "Stage 3 — Reasoning pass" "$f"
+  grep -q "Stage 4 — Report" "$f"
+  grep -qi "Refuse if the working tree is dirty" "$f"
+  grep -qi "adversarial verification" "$f"
+}
