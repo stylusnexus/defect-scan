@@ -141,3 +141,11 @@ setup() {
   grep -qi "Refuse if the working tree is dirty" "$f"
   grep -qi "adversarial verification" "$f"
 }
+
+@test "ruff flags the planted bare-except in the python fixture" {
+  tool="$("$DETECT" tool ruff "$BATS_TEST_DIRNAME/fixtures/python" || true)"
+  [ -n "$tool" ] || skip "ruff not installed"
+  run "$tool" check --select E722 --output-format=json \
+      "$BATS_TEST_DIRNAME/fixtures/python/app/bug.py"
+  [[ "$output" == *"E722"* ]]
+}
