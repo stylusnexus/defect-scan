@@ -262,3 +262,40 @@ or re-aliases a column in one CTE and the downstream reference rots silently.
 unqualified ref vs `discogs_master_id` alias in the `ranked` CTE; `parent_label`
 string inserted into a `bigint` column → repeated insert aborts; fresh-install
 auth schema missing.
+
+---
+
+## P10 — Missing / weak security response headers (CSP & friends)
+
+**Generic defect:** A web app ships responses without the baseline security
+headers, or with a Content-Security-Policy weak enough to neuter its own
+protection. This is a defense-in-depth backstop for XSS (cat#3) and clickjacking;
+it's also a common compliance/baseline gap rather than a flashy bug, so it gets
+skipped.
+
+**Invariants to check:**
+1. **The baseline headers are set** on app responses: `Content-Security-Policy`,
+   `Strict-Transport-Security`, `X-Frame-Options` (or CSP `frame-ancestors`),
+   `X-Content-Type-Options: nosniff`.
+2. **CSP isn't self-defeating** — flag `unsafe-inline` / `unsafe-eval`, wildcard
+   `*` sources, and a missing/over-broad `default-src`. Prefer nonce/hash over
+   `unsafe-inline`.
+3. **Applied everywhere** — headers set in one place (a route, one middleware
+   branch) but not on all responses is the P3/P5 "one path forgets" shape. Check
+   error responses and statically-served paths too.
+
+**Detection heuristic:** Find where response headers are configured — Next.js
+`headers()` in `next.config.*` or middleware, Express `helmet()`, FastAPI/Starlette
+middleware, Django `SECURE_*` settings / `SecurityMiddleware`, nginx/CDN config.
+Flag any baseline header absent, any weak CSP directive, and CSP defined on a
+subset of routes. `semgrep` (`p/owasp-top-ten`) confirms several of these — treat
+those as High (tool-confirmed); reasoning-only header-absence is Medium.
+
+**Why it recurs:** headers are infra-adjacent and invisible in normal use — the
+app works fine without them, so they're easy to omit or weaken (`unsafe-inline`
+"just to ship") and nothing fails a test.
+
+**Manifested as:** the security baseline most web apps are measured against
+(OWASP secure-headers; Stylus Nexus production header requirements). Surfaced as
+"escaper/CSP nits" in work-plan-toolkit's webview hardening (#197), where strict
+CSP + per-load nonce was the correct bar.

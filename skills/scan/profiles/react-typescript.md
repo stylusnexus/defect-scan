@@ -37,6 +37,9 @@ Baseline categories specialized:
   render, race between async effect and unmount.
 React-specific: missing `key` in lists, conditional hook calls, derived-state-in-
 effect anti-pattern, hydration mismatches (non-deterministic render output).
+Security headers (P10): check `next.config.*` `headers()` / middleware (or `helmet`)
+for CSP, HSTS, `X-Frame-Options`, `X-Content-Type-Options`; flag `unsafe-inline`/
+`unsafe-eval`/wildcard CSP sources and headers applied to only a subset of routes.
 Rules-of-hooks / purity (React 18/19) — recurs in real codebases, eslint
 `react-hooks/*` confirms many: `setState` inside an effect with no guard (render
 loop), impure calls during render (`performance.now`, `Date.now`, `Math.random`),

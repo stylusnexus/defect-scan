@@ -190,10 +190,10 @@ setup() {
   [[ "$output" != *"notes.txt"* ]]
 }
 
-@test "patterns/recurring.md defines the battle-tested patterns P1-P9" {
+@test "patterns/recurring.md defines the battle-tested patterns P1-P10" {
   f="$BATS_TEST_DIRNAME/../skills/scan/patterns/recurring.md"
   [ -f "$f" ]
-  for p in P1 P2 P3 P4 P5 P6 P7 P8 P9; do grep -qE "^## $p" "$f"; done
+  for p in P1 P2 P3 P4 P5 P6 P7 P8 P9 P10; do grep -qE "^## $p" "$f"; done
 }
 
 @test "SKILL.md reasoning pass consults patterns/recurring.md" {
