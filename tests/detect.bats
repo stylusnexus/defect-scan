@@ -45,3 +45,35 @@ setup() {
   [ "$status" -eq 1 ]
   [ -z "$output" ]
 }
+
+@test "scope: --full lists all tracked files, MODE=full" {
+  repo="$BATS_TEST_TMPDIR/full"
+  mkdir -p "$repo" && cd "$repo" && git init -q
+  echo a > a.txt && echo b > b.txt && git add . && git -c user.email=t@t -c user.name=t commit -qm init
+  run "$DETECT" scope "" --full "$repo"
+  [ "$status" -eq 0 ]
+  [[ "${lines[0]}" == "MODE=full" ]]
+  [[ "$output" == *"a.txt"* && "$output" == *"b.txt"* ]]
+}
+
+@test "scope: a path argument yields MODE=path and files under it" {
+  repo="$BATS_TEST_TMPDIR/pathmode"
+  mkdir -p "$repo/sub" && cd "$repo" && git init -q
+  echo x > sub/x.py && git add . && git -c user.email=t@t -c user.name=t commit -qm init
+  run "$DETECT" scope "sub" "" "$repo"
+  [ "$status" -eq 0 ]
+  [[ "${lines[0]}" == "MODE=path" ]]
+  [[ "$output" == *"sub/x.py"* ]]
+}
+
+@test "scope: no arg yields MODE=changes from uncommitted edits" {
+  repo="$BATS_TEST_TMPDIR/changes"
+  mkdir -p "$repo" && cd "$repo" && git init -q
+  echo one > f.txt && git add . && git -c user.email=t@t -c user.name=t commit -qm init
+  echo two >> f.txt
+  echo new > g.txt
+  run "$DETECT" scope "" "" "$repo"
+  [ "$status" -eq 0 ]
+  [[ "${lines[0]}" == "MODE=changes" ]]
+  [[ "$output" == *"f.txt"* && "$output" == *"g.txt"* ]]
+}
