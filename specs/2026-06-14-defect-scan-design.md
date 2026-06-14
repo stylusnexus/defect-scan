@@ -102,6 +102,8 @@ defect-scan/
     generic.md            # language-agnostic fallback (the 5 baseline categories)
   baseline-categories.md  # the 5 cross-cutting defect types, referenced by every profile
   report-format.md        # the ranked-findings template + confidence-tier definitions
+  patterns/
+    recurring.md          # battle-tested cross-cutting patterns distilled from real incidents
 ```
 
 Each **profile** declares:

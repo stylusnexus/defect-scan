@@ -55,8 +55,10 @@ matching the pattern", a config parse failure) is **inconclusive** — report it
 such with the stderr reason; never let a tool error read as a passing file.
 
 ## Stage 3 — Reasoning pass
-Read the in-scope files against the profile's `## Reasoning checklist` and
-`baseline-categories.md`. For EVERY reasoning-only finding, run an
+Read the in-scope files against the profile's `## Reasoning checklist`,
+`baseline-categories.md`, and `patterns/recurring.md` (battle-tested cross-cutting
+patterns: metered-action charge/refund correctness, string-keyed identifier drift,
+privileged-audience data leaks). For EVERY reasoning-only finding, run an
 **adversarial verification** pass before ranking: state the strongest case that the finding is
 NOT a real defect (guard exists elsewhere, input is trusted, path unreachable).
 - Survives with a clear repro path → eligible for **High**.

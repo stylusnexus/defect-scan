@@ -189,3 +189,13 @@ setup() {
   [[ "$output" != *"package.json"* ]]
   [[ "$output" != *"notes.txt"* ]]
 }
+
+@test "patterns/recurring.md defines the three battle-tested patterns" {
+  f="$BATS_TEST_DIRNAME/../patterns/recurring.md"
+  [ -f "$f" ]
+  grep -qE '^## P1' "$f"; grep -qE '^## P2' "$f"; grep -qE '^## P3' "$f"
+}
+
+@test "SKILL.md reasoning pass consults patterns/recurring.md" {
+  grep -q "patterns/recurring.md" "$BATS_TEST_DIRNAME/../SKILL.md"
+}
