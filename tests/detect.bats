@@ -268,3 +268,10 @@ setup() {
   grep -q "semgrep" "$root/skills/scan/SKILL.md"
   grep -q "bandit"  "$root/skills/scan/profiles/python.md"
 }
+
+@test "setup-optional-tools helper exists, is executable, and parses" {
+  s="$BATS_TEST_DIRNAME/../scripts/setup-optional-tools.sh"
+  [ -x "$s" ]
+  sh -n "$s"
+  grep -q "semgrep" "$s"; grep -q "gitleaks" "$s"
+}
