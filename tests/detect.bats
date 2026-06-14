@@ -237,3 +237,41 @@ setup() {
   [ -f "$root/skills/scan/SKILL.md" ]
   [ -x "$root/skills/scan/lib/detect.sh" ]
 }
+
+@test "hook: no-op (exit 0, silent) when DEFECT_SCAN_HOOK is unset" {
+  run env -u DEFECT_SCAN_HOOK sh "$BATS_TEST_DIRNAME/../hooks/pre-commit-scan.sh" <<< '{"tool_input":{"command":"git commit -m x"}}'
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "hook: opted-in but non-commit command → exit 0, silent" {
+  run env DEFECT_SCAN_HOOK=1 sh "$BATS_TEST_DIRNAME/../hooks/pre-commit-scan.sh" <<< '{"tool_input":{"command":"ls -la"}}'
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "hook: opted-in commit advisory is non-blocking (exit 0) and mentions defect-scan" {
+  repo="$BATS_TEST_TMPDIR/hookrepo"
+  mkdir -p "$repo" && cd "$repo" && git init -q
+  printf 'import os\nx=1\n' > a.py && git add . && git -c user.email=t@t -c user.name=t commit -qm init
+  echo "y=2" >> a.py   # uncommitted change so scope=changes is non-empty
+  run env DEFECT_SCAN_HOOK=1 CLAUDE_PLUGIN_ROOT="$BATS_TEST_DIRNAME/.." \
+      sh "$BATS_TEST_DIRNAME/../hooks/pre-commit-scan.sh" <<< '{"tool_input":{"command":"git commit -m y"}}'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"defect-scan:"* ]]
+}
+
+@test "help command and hooks manifest exist; profiles wire optional analyzers" {
+  root="$BATS_TEST_DIRNAME/.."
+  [ -f "$root/commands/help.md" ]
+  jq -e '.hooks.PreToolUse' "$root/hooks/hooks.json" >/dev/null
+  grep -q "semgrep" "$root/skills/scan/SKILL.md"
+  grep -q "bandit"  "$root/skills/scan/profiles/python.md"
+}
+
+@test "setup-optional-tools helper exists, is executable, and parses" {
+  s="$BATS_TEST_DIRNAME/../scripts/setup-optional-tools.sh"
+  [ -x "$s" ]
+  sh -n "$s"
+  grep -q "semgrep" "$s"; grep -q "gitleaks" "$s"
+}

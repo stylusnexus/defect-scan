@@ -8,7 +8,13 @@ Resolve each via `detect.sh tool <name>` (venv-first, then global). Skip-with-hi
 if unresolved.
 - `ruff check --output-format=json <files>`  — lint/correctness rules.
 - `mypy --no-error-summary <files>`           — type errors.
-Install hints: `pip install ruff mypy` (or `uv pip install ruff mypy`).
+Optional (deeper, run if installed):
+- `bandit -f json -r <paths>`                 — security: subprocess (P4), SQL (P9),
+  hardcoded secrets, weak crypto (cat#3). Findings are High (tool-confirmed).
+- `pip-audit -f json`                         — known-vuln dependencies (a dimension
+  reasoning can't see); High.
+Install hints: `pip install ruff mypy` (or `uv pip install ruff mypy`);
+optional: `pip install bandit pip-audit`.
 
 ## Reasoning checklist
 Baseline categories specialized:
