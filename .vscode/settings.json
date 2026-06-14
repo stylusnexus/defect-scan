@@ -1,0 +1,17 @@
+{
+  "files.associations": {
+    "*.bats": "shellscript",
+    "detect.sh": "shellscript"
+  },
+  "[shellscript]": {
+    "editor.tabSize": 2,
+    "editor.insertSpaces": true
+  },
+  "shellcheck.enable": true,
+  "search.exclude": {
+    "tests/fixtures/**/node_modules": true
+  },
+  "files.exclude": {
+    "**/.DS_Store": true
+  }
+}
