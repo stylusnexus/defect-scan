@@ -126,6 +126,24 @@ cmd_triage() {
   rm -f "$churn_file"
 }
 
+# Correlate a finding against existing tracker issues. Search-driven (NOT a bulk
+# pull) so it scales past the default `gh` 30-item cap and a 2000+ issue repo:
+# one targeted search per call, capped at DEFECT_SCAN_ISSUE_LIMIT. Degrades
+# cleanly (exit 3, no stdout) when gh is missing or the query fails — correlation
+# is an enhancement, never a hard dependency. DEFECT_SCAN_GH overrides the binary
+# (used by tests to stay offline).
+cmd_issues() {
+  [ $# -ge 1 ] || { echo "usage: detect.sh issues <keyword> [keyword...]" >&2; return 2; }
+  gh_bin="${DEFECT_SCAN_GH:-gh}"
+  command -v "$gh_bin" >/dev/null 2>&1 || {
+    echo "defect-scan: gh not available; skipping issue correlation" >&2; return 3; }
+  out="$("$gh_bin" issue list --state all --limit "${DEFECT_SCAN_ISSUE_LIMIT:-60}" \
+          --search "$*" --json number,state,title 2>/dev/null)" || {
+    echo "defect-scan: issue query failed (no remote / not authenticated)" >&2; return 3; }
+  [ -n "$out" ] || return 0
+  printf '%s' "$out" | jq -r '.[] | "#\(.number)\t\(.state)\t\(.title)"'
+}
+
 main() {
   sub="${1:-}"; [ $# -gt 0 ] && shift || true
   case "$sub" in
@@ -133,7 +151,8 @@ main() {
     tool)    cmd_tool "$@" ;;
     scope)   cmd_scope "$@" ;;
     triage)  cmd_triage "$@" ;;
-    *) echo "usage: detect.sh {stacks|tool|scope|triage} ..." >&2; return 2 ;;
+    issues)  cmd_issues "$@" ;;
+    *) echo "usage: detect.sh {stacks|tool|scope|triage|issues} ..." >&2; return 2 ;;
   esac
 }
 main "$@"

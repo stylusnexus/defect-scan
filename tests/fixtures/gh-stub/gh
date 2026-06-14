@@ -1,0 +1,9 @@
+#!/usr/bin/env sh
+# Minimal `gh` stub for offline correlation tests. Ignores args, emits canned
+# `gh issue list --json number,state,title` output.
+cat <<'JSON'
+[
+  {"number":5421,"state":"OPEN","title":"Credit deducted without refund on async generation early-returns"},
+  {"number":1274,"state":"CLOSED","title":"fix(billing): add credit deduction to /api/ai/generate (1 credits)"}
+]
+JSON

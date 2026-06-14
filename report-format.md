@@ -13,17 +13,20 @@
 defect-scan — <target> (MODE=<changes|path|full>)
 Stacks: <profiles>   Tools run: <list>   Tools missing: <list + install hint>
 Triage: deep-reasoned top <k> of <n> in-scope files (rest tool-scanned only)
-Findings: High <n> · Medium <n> · Low <n>
+Correlation: <on (m findings matched existing issues) | off | unavailable (no gh/remote)>
+Findings: High <n> · Medium <n> · Low <n>   (NEW <n> · already-filed <n>)
 ```
 If a tool was missing, the header says so — never imply clean coverage. If triage
 limited the deep pass, the header says how far it reached — never imply every file
-was deep-reasoned.
+was deep-reasoned. If correlation was unavailable, the header says so — never imply
+NEW when you couldn't check the tracker.
 
 ## Per-finding line
 ```
-[<SEVERITY>] (<tier>) <file>:<line> · cat#<n> <short title>
+[<SEVERITY>] (<tier>) [<correlation>] <file>:<line> · cat#<n> <short title>
   evidence:  <one line: the rule id, or the reasoning + why it survives>
   fix:       <one-line suggested remedy>
 ```
-Sorted High→Low, then by severity. Low tier goes under a `<details>`-style
-"Low-confidence appendix" heading.
+`<correlation>` is one of: `NEW`, `LIKELY FILED #N`, `RELATED #N`,
+`VERIFY REGRESSION #N` (closed match). Sorted High→Low, then by severity. Low tier
+goes under a `<details>`-style "Low-confidence appendix" heading.
