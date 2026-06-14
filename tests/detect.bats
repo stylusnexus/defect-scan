@@ -103,3 +103,13 @@ setup() {
   [ "$s0" -ge "$s1" ]
   [[ "${lines[0]}" == *$'\t'* ]]
 }
+
+@test "baseline-categories.md defines all five categories" {
+  f="$BATS_TEST_DIRNAME/../baseline-categories.md"
+  for n in 1 2 3 4 5; do grep -qE "^## $n\." "$f"; done
+}
+
+@test "report-format.md defines all three tiers" {
+  f="$BATS_TEST_DIRNAME/../report-format.md"
+  grep -qi "High" "$f"; grep -qi "Medium" "$f"; grep -qi "Low" "$f"
+}
