@@ -113,3 +113,14 @@ setup() {
   f="$BATS_TEST_DIRNAME/../report-format.md"
   grep -qi "High" "$f"; grep -qi "Medium" "$f"; grep -qi "Low" "$f"
 }
+
+@test "every profile declares the four required sections in order" {
+  for p in generic python react-typescript; do
+    f="$BATS_TEST_DIRNAME/../profiles/$p.md"
+    [ -f "$f" ]
+    grep -qE '^## Detection'           "$f"
+    grep -qE '^## Toolchain'           "$f"
+    grep -qE '^## Reasoning checklist' "$f"
+    grep -qE '^## Auto-fix-safe'       "$f"
+  done
+}
