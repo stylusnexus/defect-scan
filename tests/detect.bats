@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 
 setup() {
-  DETECT="$BATS_TEST_DIRNAME/../lib/detect.sh"
+  DETECT="$BATS_TEST_DIRNAME/../skills/scan/lib/detect.sh"
 }
 
 @test "detect.sh prints usage and exits 2 on unknown subcommand" {
@@ -105,18 +105,18 @@ setup() {
 }
 
 @test "baseline-categories.md defines all five categories" {
-  f="$BATS_TEST_DIRNAME/../baseline-categories.md"
+  f="$BATS_TEST_DIRNAME/../skills/scan/baseline-categories.md"
   for n in 1 2 3 4 5; do grep -qE "^## $n\." "$f"; done
 }
 
 @test "report-format.md defines all three tiers" {
-  f="$BATS_TEST_DIRNAME/../report-format.md"
+  f="$BATS_TEST_DIRNAME/../skills/scan/report-format.md"
   grep -qi "High" "$f"; grep -qi "Medium" "$f"; grep -qi "Low" "$f"
 }
 
 @test "every profile declares the four required sections in order" {
   for p in generic python react-typescript; do
-    f="$BATS_TEST_DIRNAME/../profiles/$p.md"
+    f="$BATS_TEST_DIRNAME/../skills/scan/profiles/$p.md"
     [ -f "$f" ]
     grep -qE '^## Detection'           "$f"
     grep -qE '^## Toolchain'           "$f"
@@ -126,13 +126,13 @@ setup() {
 }
 
 @test "SKILL.md has name and description front matter" {
-  f="$BATS_TEST_DIRNAME/../SKILL.md"
+  f="$BATS_TEST_DIRNAME/../skills/scan/SKILL.md"
   grep -qE '^name: defect-scan$' "$f"
   grep -qE '^description: ' "$f"
 }
 
 @test "SKILL.md documents all stages (incl. triage) and the fix-safety gate" {
-  f="$BATS_TEST_DIRNAME/../SKILL.md"
+  f="$BATS_TEST_DIRNAME/../skills/scan/SKILL.md"
   grep -q "Stage 1 — Detect" "$f"
   grep -q "Stage 1b — Triage" "$f"
   grep -q "Stage 2 — Tool pass" "$f"
@@ -191,13 +191,13 @@ setup() {
 }
 
 @test "patterns/recurring.md defines the battle-tested patterns P1-P9" {
-  f="$BATS_TEST_DIRNAME/../patterns/recurring.md"
+  f="$BATS_TEST_DIRNAME/../skills/scan/patterns/recurring.md"
   [ -f "$f" ]
   for p in P1 P2 P3 P4 P5 P6 P7 P8 P9; do grep -qE "^## $p" "$f"; done
 }
 
 @test "SKILL.md reasoning pass consults patterns/recurring.md" {
-  grep -q "patterns/recurring.md" "$BATS_TEST_DIRNAME/../SKILL.md"
+  grep -q "patterns/recurring.md" "$BATS_TEST_DIRNAME/../skills/scan/SKILL.md"
 }
 
 @test "issues: requires at least one keyword" {
@@ -223,9 +223,17 @@ setup() {
 }
 
 @test "SKILL.md documents depth cap and correlation stage" {
-  f="$BATS_TEST_DIRNAME/../SKILL.md"
+  f="$BATS_TEST_DIRNAME/../skills/scan/SKILL.md"
   grep -q -- "--depth N" "$f"
   grep -q "Stage 4a — Correlate" "$f"
   grep -q "detect.sh issues" "$f"
   grep -q -- "--no-correlate" "$f"
+}
+
+@test "plugin manifest exists with required fields and skill is under skills/scan" {
+  root="$BATS_TEST_DIRNAME/.."
+  [ -f "$root/.claude-plugin/plugin.json" ]
+  jq -e '.name and .description and .version' "$root/.claude-plugin/plugin.json" >/dev/null
+  [ -f "$root/skills/scan/SKILL.md" ]
+  [ -x "$root/skills/scan/lib/detect.sh" ]
 }

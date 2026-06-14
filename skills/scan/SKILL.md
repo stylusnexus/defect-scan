@@ -10,6 +10,12 @@ reasoning pass → report (→ fix)**. The deterministic plumbing is `lib/detect
 the defect knowledge is in `profiles/`, `baseline-categories.md`, and
 `report-format.md`.
 
+**Paths:** `lib/detect.sh` and the knowledge files live in *this skill directory*,
+not the user's project. The scan runs against the user's `cwd`, so invoke the
+helper by its skill-dir path — as a plugin that is
+`${CLAUDE_PLUGIN_ROOT}/skills/scan/lib/detect.sh`. The `lib/detect.sh …` snippets
+below are shorthand for that absolute path.
+
 ## Arguments
 - (no arg) → scan recent changes. `<path>` → scan that file/dir. `--full` → whole repo.
 - `--depth N` → deep-reason the top **N** triaged source files (default **20**).
