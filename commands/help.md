@@ -23,6 +23,7 @@ Language-aware defect hunter. Pipeline: **detect → triage → tool pass → re
 ## What it uses
 - **Real analyzers if installed** (project-local first): `ruff`/`mypy`, `tsc`/`eslint`;
   optional deeper: `semgrep`, `gitleaks`, `bandit`, `pip-audit`, `npm audit`, `osv-scanner`.
+  Install the optional set: `sh ${CLAUDE_PLUGIN_ROOT}/scripts/setup-optional-tools.sh`
 - **9 battle-tested patterns** (`patterns/recurring.md`) + per-language reasoning checklists.
 - **Confidence tiers**: High (tool-confirmed / adversarially verified) · Medium · Low.
 - **Tracker correlation**: tags findings NEW / LIKELY FILED #N / RELATED #N / VERIFY REGRESSION #N.

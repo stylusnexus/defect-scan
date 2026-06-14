@@ -32,7 +32,9 @@ The scan runs whatever's installed and skips the rest with an install hint:
 - **`gitleaks`** — committed secrets
 - **`bandit` / `pip-audit`** (Python), **`npm audit` / `osv-scanner`** (JS/TS) — security + vuln deps
 
-`brew install semgrep gitleaks` · `pip install bandit pip-audit`
+One-liner to install them all (best-effort, per your package managers):
+`sh scripts/setup-optional-tools.sh`
+(or manually: `brew install semgrep gitleaks osv-scanner` · `pip install bandit pip-audit`)
 
 ## Optional pre-commit advisory (off by default)
 Set `DEFECT_SCAN_HOOK=1` to get a one-line, **non-blocking** advisory on changed
