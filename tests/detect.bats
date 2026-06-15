@@ -317,7 +317,7 @@ setup() {
 }
 
 @test "every profile declares the four required sections in order" {
-  for p in generic python react-typescript dart ruby; do
+  for p in generic python react-typescript dart ruby go; do
     f="$BATS_TEST_DIRNAME/../skills/scan/profiles/$p.md"
     [ -f "$f" ]
     grep -qE '^## Detection'           "$f"
@@ -612,6 +612,28 @@ setup() {
   [[ "$output" == *"recall=1.00"* ]]
 }
 
+@test "stacks: detects go from go.mod" {
+  run "$DETECT" stacks "$BATS_TEST_DIRNAME/fixtures/go"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"go"* ]]
+}
+
+@test "eval: go corpus scores a clean run 1.0 and has a near-miss" {
+  corpus="$BATS_TEST_DIRNAME/eval/go/seen"
+  [ -s "$corpus/bug_unchecked_error.go.expected" ]
+  [ -f "$corpus/clean_deferred_close.go.expected" ] && [ ! -s "$corpus/clean_deferred_close.go.expected" ]
+  f="$BATS_TEST_TMPDIR/go"
+  {
+    echo "bug_unchecked_error.go:6:cat#2"
+    echo "bug_nil_map_write.go:5:cat#1"
+    echo "bug_resource_leak.go:6:cat#4"
+  } > "$f"
+  run "$DETECT" eval "$corpus" "$f"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"precision=1.00"* ]]
+  [[ "$output" == *"recall=1.00"* ]]
+}
+
 @test "triage: ranks .dart files (source-filter includes dart)" {
   repo="$BATS_TEST_TMPDIR/dartrepo"
   mkdir -p "$repo" && cd "$repo" && git init -q
@@ -654,6 +676,9 @@ setup() {
   [ "$("$DETECT" __fmget "$P/ruby.md" name)" = "ruby" ]
   [[ "$("$DETECT" __fmget "$P/ruby.md" extensions)" == *"rb"* ]]
   [[ "$("$DETECT" __fmget "$P/ruby.md" detect_files)" == *"Gemfile"* ]]
+  [ "$("$DETECT" __fmget "$P/go.md" name)" = "go" ]
+  [[ "$("$DETECT" __fmget "$P/go.md" extensions)" == *"go"* ]]
+  [[ "$("$DETECT" __fmget "$P/go.md" detect_files)" == *"go.mod"* ]]
 }
 
 @test "profiles: lists built-ins with origin=builtin" {
