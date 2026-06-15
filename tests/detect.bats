@@ -103,6 +103,40 @@ setup() {
   [[ "$output" == *"eval"* ]]
 }
 
+@test "codex-verify: requires a prompt file" {
+  run "$DETECT" codex-verify
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"usage:"* ]]
+}
+
+@test "codex-verify: returns the second model's verdict (read-only, via stub)" {
+  export DEFECT_SCAN_CODEX="$BATS_TEST_DIRNAME/fixtures/codex-stub/codex"
+  pf="$BATS_TEST_TMPDIR/prompt"; printf 'Refute this finding. real or not?\n' > "$pf"
+  run "$DETECT" codex-verify "$pf"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"VERDICT:"* ]]
+}
+
+@test "codex-verify: degrades cleanly (exit 3) when codex is unavailable" {
+  export DEFECT_SCAN_CODEX="/nonexistent/codex-xyz"
+  pf="$BATS_TEST_TMPDIR/prompt2"; echo "x" > "$pf"
+  run "$DETECT" codex-verify "$pf"
+  [ "$status" -eq 3 ]
+  [[ "$output" == *"codex not available"* ]]
+}
+
+@test "codex-verify: errors (exit 2) when the prompt file is missing" {
+  export DEFECT_SCAN_CODEX="$BATS_TEST_DIRNAME/fixtures/codex-stub/codex"
+  run "$DETECT" codex-verify "/no/such/prompt"
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"not found"* ]]
+}
+
+@test "usage lists the codex-verify subcommand" {
+  run "$DETECT" bogus
+  [[ "$output" == *"codex-verify"* ]]
+}
+
 @test "windows fallback: PowerShell shim exists and delegates to the shared engine" {
   f="$BATS_TEST_DIRNAME/../windows/defect-scan.ps1"
   [ -f "$f" ]

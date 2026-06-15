@@ -18,6 +18,9 @@ Codex are thin *drivers* over the shared `detect.sh` + `profiles/` + `patterns/`
 A behavior change goes in the shared layer; if it changes the pipeline, update **both**
 drivers. Divergence between harnesses is a bug. (`detect.sh` resolves its knowledge
 files from its own script location, so it runs from any cwd under either harness.)
+Separately, `--cross-model` (Stage 3b) uses Codex as a read-only *second-opinion
+verifier* on the Claude scan's findings (`detect.sh codex-verify`) — different models,
+different blind spots. That's distinct from running the whole scan under Codex.
 
 Distributed via the `stylusnexus/agent-plugins` marketplace (name `stylus-nexus`);
 installed as `/plugin install defect-scan@stylus-nexus`, invoked as

@@ -19,6 +19,8 @@ Language-aware defect hunter. Pipeline: **detect → triage → tool pass → re
 - `--fix-all` — also apply the medium tier (with confirmation)
 - `--lang <profile>` — force a profile (react-typescript | python | generic)
 - `--no-correlate` — skip GitHub-issue correlation (on by default when `gh` is present)
+- `--cross-model` — verify reasoning findings through a second model (Codex, read-only)
+  for a different-model second opinion; needs `codex` installed
 - `--file-issues[=medium]` — file a GitHub issue per NEW finding (High only by default;
   `=medium` includes Medium). Write action: needs `gh` auth, dedupes against existing
   issues (requires correlation), reuses the repo's existing defect + priority labels
