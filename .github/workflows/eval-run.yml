@@ -1,0 +1,32 @@
+name: eval-run (manual)
+
+# Manual ONLY. Never on PR/push: it spends a model + is non-deterministic. Runs from a
+# trusted ref behind an approval-gated Environment so secret model creds are never
+# exposed to PR-modified runner scripts (spec section 6 security).
+on:
+  workflow_dispatch:
+    inputs:
+      lang:   { description: "language profile (e.g. java)", required: true }
+      runs:   { description: "runs per fixture", required: false, default: "5" }
+      split:  { description: "seen | held-out | all", required: false, default: "seen" }
+
+permissions:
+  contents: read            # minimal token
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    environment: eval-run    # configure with required reviewers + the model secret
+    steps:
+      - uses: actions/checkout@v4    # checks out the dispatched (trusted) ref
+      - name: Install bats + jq
+        run: sudo apt-get update && sudo apt-get install -y bats jq
+      - name: Install codex (eval runner)
+        run: echo "Provision the codex CLI here (org-specific)."
+      - name: Run the eval harness
+        env:
+          DEFECT_SCAN_EVAL_RUNNER: tests/eval/runners/codex.sh
+          CODEX_API_KEY: ${{ secrets.CODEX_API_KEY }}
+        run: |
+          sh skills/scan/lib/detect.sh eval-run "${{ inputs.lang }}" \
+            --runs "${{ inputs.runs }}" --split "${{ inputs.split }}"
