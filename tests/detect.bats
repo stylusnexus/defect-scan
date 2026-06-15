@@ -193,6 +193,18 @@ setup() {
   grep -qi "adversarial verification" "$f"
 }
 
+@test "codex port: entrypoint drives the shared pipeline (delegates to SKILL.md, runs detect.sh)" {
+  f="$BATS_TEST_DIRNAME/../codex/defect-scan.md"
+  [ -f "$f" ]
+  grep -q "DEFECT_SCAN_HOME" "$f"          # locates the shared install
+  grep -q "detect.sh" "$f"                 # reuses the shared plumbing
+  grep -q "SKILL.md" "$f"                  # canonical spec is the source of truth
+  grep -qi "origin-gate" "$f"              # preserves the P4 safety invariant
+  grep -qi "report-only" "$f"              # preserves the report-only default
+  [ -f "$BATS_TEST_DIRNAME/../codex/README.md" ]   # install/usage doc
+  [ -f "$BATS_TEST_DIRNAME/../AGENTS.md" ]          # Codex contributor guide
+}
+
 @test "ruff flags the planted bare-except in the python fixture" {
   tool="$("$DETECT" tool ruff "$BATS_TEST_DIRNAME/fixtures/python" || true)"
   [ -n "$tool" ] || skip "ruff not installed"

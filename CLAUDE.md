@@ -11,6 +11,14 @@ is no build step and no runtime service. "Running" the scan means a Claude sessi
 loads `SKILL.md` and follows its five stages against a *target* repo (the user's
 `cwd`), shelling out to `detect.sh` for the mechanical parts.
 
+**Two harnesses, one brain.** The same pipeline also runs under **Codex**
+(`codex/defect-scan.md` + `AGENTS.md`). Both Claude (`skills/scan/SKILL.md`) and
+Codex are thin *drivers* over the shared `detect.sh` + `profiles/` + `patterns/` +
+`report-format.md`/`baseline-categories.md` — those are the single source of truth.
+A behavior change goes in the shared layer; if it changes the pipeline, update **both**
+drivers. Divergence between harnesses is a bug. (`detect.sh` resolves its knowledge
+files from its own script location, so it runs from any cwd under either harness.)
+
 Distributed via the `stylusnexus/agent-plugins` marketplace (name `stylus-nexus`);
 installed as `/plugin install defect-scan@stylus-nexus`, invoked as
 `/defect-scan:scan`.

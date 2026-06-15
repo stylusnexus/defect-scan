@@ -32,6 +32,11 @@ The repo is `stylusnexus/agent-plugins`; the marketplace **name** is `stylus-nex
 ## Help
 `/defect-scan:help` prints usage, flags, and what it uses.
 
+## Codex
+defect-scan also runs under the [Codex CLI](https://github.com/openai/codex) — the
+scan logic, profiles, and patterns are shared; only the entrypoint differs. See
+[`codex/README.md`](./codex/README.md) to install the Codex prompt.
+
 ## Optional analyzers (richer coverage, all degrade-gracefully)
 The scan runs whatever's installed and skips the rest with an install hint:
 - **`semgrep`** — multi-language taint (injection, subprocess, SQL) — highest-value add
