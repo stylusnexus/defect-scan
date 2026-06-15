@@ -317,7 +317,7 @@ setup() {
 }
 
 @test "every profile declares the four required sections in order" {
-  for p in generic python react-typescript dart ruby go; do
+  for p in generic python react-typescript dart ruby go csharp; do
     f="$BATS_TEST_DIRNAME/../skills/scan/profiles/$p.md"
     [ -f "$f" ]
     grep -qE '^## Detection'           "$f"
@@ -634,6 +634,28 @@ setup() {
   [[ "$output" == *"recall=1.00"* ]]
 }
 
+@test "stacks: detects csharp from a .csproj" {
+  run "$DETECT" stacks "$BATS_TEST_DIRNAME/fixtures/csharp"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"csharp"* ]]
+}
+
+@test "eval: csharp corpus scores a clean run 1.0 and has a near-miss" {
+  corpus="$BATS_TEST_DIRNAME/eval/csharp/seen"
+  [ -s "$corpus/bug_empty_catch.cs.expected" ]
+  [ -f "$corpus/clean_logged_rethrow.cs.expected" ] && [ ! -s "$corpus/clean_logged_rethrow.cs.expected" ]
+  f="$BATS_TEST_TMPDIR/cs"
+  {
+    echo "bug_empty_catch.cs:4:cat#2"
+    echo "bug_sql_injection.cs:4:cat#3"
+    echo "bug_undisposed.cs:3:cat#4"
+  } > "$f"
+  run "$DETECT" eval "$corpus" "$f"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"precision=1.00"* ]]
+  [[ "$output" == *"recall=1.00"* ]]
+}
+
 @test "triage: ranks .dart files (source-filter includes dart)" {
   repo="$BATS_TEST_TMPDIR/dartrepo"
   mkdir -p "$repo" && cd "$repo" && git init -q
@@ -679,6 +701,9 @@ setup() {
   [ "$("$DETECT" __fmget "$P/go.md" name)" = "go" ]
   [[ "$("$DETECT" __fmget "$P/go.md" extensions)" == *"go"* ]]
   [[ "$("$DETECT" __fmget "$P/go.md" detect_files)" == *"go.mod"* ]]
+  [ "$("$DETECT" __fmget "$P/csharp.md" name)" = "csharp" ]
+  [[ "$("$DETECT" __fmget "$P/csharp.md" extensions)" == *"cs"* ]]
+  [[ "$("$DETECT" __fmget "$P/csharp.md" detect_files)" == *"global.json"* ]]
 }
 
 @test "profiles: lists built-ins with origin=builtin" {
