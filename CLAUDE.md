@@ -139,6 +139,16 @@ steps or add repo-local copies:
 After a `--fix` run, defect-scan itself hands off remediation to
 `/review-merge-pipeline` rather than shipping fixes directly (see Scope boundaries).
 
+**Repo infrastructure (public-readiness):** `.github/workflows/ci.yml` runs the bats
+suite + `sh -n` + a gitleaks secret scan on every PR — keep it green and POSIX-clean.
+Releases are automated: `release-please` (`release-please-config.json`,
+`.release-please-manifest.json`, `.github/workflows/release-please.yml`) generates
+`CHANGELOG.md` and bumps `.claude-plugin/plugin.json` from Conventional Commit titles
+when `dev` is deployed to `main` — so **PR titles are the changelog**; never hand-edit
+released CHANGELOG sections. Contributor docs: `CONTRIBUTING.md` (add/enhance a
+profile, add a pattern), `EXTENDING.md` (private drop-in extension), plus
+`SECURITY.md` / `CODE_OF_CONDUCT.md` / issue + PR templates. License: MIT.
+
 ## Workspace inheritance
 
 This repo lives locally under `/Applications/Development/Projects`; the workspace

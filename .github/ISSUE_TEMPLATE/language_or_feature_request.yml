@@ -1,0 +1,51 @@
+name: Language / feature request
+description: Request a new built-in language profile, a defect pattern, or another enhancement
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing a **language**: you can support any language in your own repo
+        today with a drop-in profile — no PR needed. See
+        [EXTENDING.md](../blob/main/EXTENDING.md). File here when it should be a
+        **built-in** everyone gets, or to propose contributing it.
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What are you requesting?
+      options:
+        - New built-in language profile
+        - Enhancement to an existing language profile
+        - New defect pattern (P-series)
+        - Other enhancement
+    validations:
+      required: true
+  - type: input
+    id: language
+    attributes:
+      label: Language / area
+      placeholder: "ruby, go, rust… or the existing profile / pattern you want to improve"
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: What defects would it catch that we miss today? Concrete examples help.
+    validations:
+      required: true
+  - type: textarea
+    id: detection-tools
+    attributes:
+      label: Detection & tooling (for a language)
+      description: How is the stack detected (files/extensions)? What real analyzer(s) would it run (and their JSON/output mode)?
+      placeholder: "detect: Gemfile / *.rb · tools: rubocop --format json"
+  - type: textarea
+    id: reasoning
+    attributes:
+      label: Reasoning checks to include
+      description: Language-specific footguns worth flagging (map to baseline cat#1–5 where you can).
+  - type: checkboxes
+    id: contribute
+    attributes:
+      label: Contribution
+      options:
+        - label: I'm willing to open a PR for this (see CONTRIBUTING.md)

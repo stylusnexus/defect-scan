@@ -1,0 +1,51 @@
+name: Bug report
+description: Something in defect-scan misbehaves (wrong detection, a crash, a bad finding, a tool not running)
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. For **security** issues, do not file here — see
+        [SECURITY.md](../blob/main/SECURITY.md). For a *known* bug in your own code,
+        defect-scan isn't the tool; this is for bugs in defect-scan itself.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did you run, and what went wrong?
+      placeholder: "Ran `/defect-scan:scan --full`; it reported a finding that isn't real / crashed / skipped a stack…"
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction
+      description: The exact invocation, and the target repo's stack if relevant. A minimal example helps most.
+      render: shell
+    validations:
+      required: true
+  - type: input
+    id: stack
+    attributes:
+      label: Target stack / profile(s)
+      placeholder: "python + react-typescript, or a custom drop-in profile"
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: defect-scan version (`.claude-plugin/plugin.json`), OS, and which analyzers were installed/missing (from the report header).
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Relevant output
+      description: The report header + the offending finding/line, or the error. Redact anything sensitive.
+      render: text

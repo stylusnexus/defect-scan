@@ -57,3 +57,19 @@ or `~/.config/defect-scan/` (personal) — no core changes. Copy
 `./install.sh` symlinks `skills/scan/` into `~/.claude/skills/defect-scan` so it
 loads while you iterate. Remove that symlink once the plugin is installed, to
 avoid a double-load. Run tests: `bats tests/detect.bats`.
+
+## Contributing
+PRs welcome — see **[CONTRIBUTING.md](./CONTRIBUTING.md)** for setup, conventions,
+and step-by-step guides to **add** a language profile, **enhance** an existing one,
+or add a defect pattern. To extend defect-scan *privately* (no PR), see
+[EXTENDING.md](./EXTENDING.md). Be excellent to each other:
+[Code of Conduct](./CODE_OF_CONDUCT.md). Security issues: [SECURITY.md](./SECURITY.md)
+(private reporting — don't open a public issue).
+
+CI runs the bats suite, a POSIX-shell syntax check, and a gitleaks secret scan on
+every PR. Releases are automated: [release-please](https://github.com/googleapis/release-please)
+generates [CHANGELOG.md](./CHANGELOG.md) and bumps the version from Conventional
+Commit titles at deploy.
+
+## License
+[MIT](./LICENSE) © Stylus Nexus.
