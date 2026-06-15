@@ -27,6 +27,9 @@ below are shorthand for that absolute path.
 - `--lang <profile>` → force a profile, skip detection.
 - `--no-correlate` → skip the tracker-correlation stage (Stage 4a). Correlation is
   **on by default** when a GitHub remote and `gh` are available.
+- `--cross-model` → verify reasoning findings through a second model (Codex) for a
+  different-model second opinion (Stage 3b). Opt-in; needs `codex` installed; runs
+  read-only. Worth it on load-bearing code (security, billing, retry/error paths).
 - `--file-issues` → after the report, file a GitHub issue for each **[NEW]** finding
   (High tier by default; `--file-issues=medium` also files Medium; Low is never
   filed). A **write action** — see Stage 4b for the auth requirement, the mandatory
@@ -109,6 +112,29 @@ NOT a real defect (guard exists elsewhere, input is trusted, path unreachable).
 - Survives but no clear repro → **Medium**.
 - Refuted → drop it (or **Low** if genuinely ambiguous).
 Tool-confirmed findings are **High** by definition.
+
+### Stage 3b — Cross-model verification (only when `--cross-model`)
+Get a second opinion from a **different model** (Codex) — different models have
+different blind spots, so this catches both false positives the scanning model is
+overconfident about and real defects it rationalized away. `codex-verify`
+self-resolves the `codex` binary (honoring `DEFECT_SCAN_CODEX`) and returns **exit 3**
+when it's absent — treat that as the skip signal: say so in the header and continue
+(never block). For each reasoning finding eligible for **High/Medium**, write a verification prompt
+to a temp file — the `file:line`, the evidence, the surrounding code, and *"state the
+strongest case this is NOT a real defect, then answer real / not-real with a one-line
+reason"* — and run:
+```
+lib/detect.sh codex-verify <prompt-file>
+```
+This runs Codex **read-only** (it cannot write or execute side-effecting commands —
+a verification must never mutate the scanned repo, pattern P4). Consolidate:
+- Both models agree it's real → keep the tier; tag **cross-model ✓**.
+- Codex **refutes** a finding the scan rated High → downgrade to Medium and surface
+  both views; don't silently keep or drop it.
+- Codex surfaces a real defect the scan missed → add it (tag **cross-model**, the
+  catching model noted).
+Tool-confirmed findings are already High and don't need cross-model. Note in the
+report header that cross-model ran (and against which model), so coverage is honest.
 
 ## Stage 4 — Report (→ fix)
 Merge tool + reasoning findings, dedupe by `file:line + category`, rank by

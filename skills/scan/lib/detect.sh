@@ -348,6 +348,29 @@ cmd_eval() {
   }'
 }
 
+# codex-verify <prompt-file>: cross-model second opinion via Codex (a DIFFERENT model
+# than the one running the scan = different blind spots). Runs Codex NON-INTERACTIVELY
+# and READ-ONLY — it may reason and read, but never write or run side-effecting
+# commands, so a verification can never mutate the scanned repo (pattern P4). Prints
+# Codex's final message. Used by --cross-model. Degrades cleanly (exit 3) when codex
+# is absent or the call fails — cross-model is an enhancement, never a hard dependency.
+# DEFECT_SCAN_CODEX overrides the binary (tests stay offline).
+cmd_codex_verify() {
+  [ $# -ge 1 ] || { echo "usage: detect.sh codex-verify <prompt-file>" >&2; return 2; }
+  pf="$1"
+  [ -f "$pf" ] || { echo "codex-verify: prompt file not found: $pf" >&2; return 2; }
+  cx="${DEFECT_SCAN_CODEX:-codex}"
+  command -v "$cx" >/dev/null 2>&1 || {
+    echo "defect-scan: codex not available; skipping cross-model verification" >&2; return 3; }
+  out="$(mktemp 2>/dev/null || echo "/tmp/ds-codex.$$")"
+  if "$cx" exec --sandbox read-only --skip-git-repo-check -o "$out" - < "$pf" >/dev/null 2>&1; then
+    cat "$out"; rm -f "$out"
+  else
+    rm -f "$out"
+    echo "defect-scan: codex exec failed (cross-model verification skipped)" >&2; return 3
+  fi
+}
+
 # preflight: verify the external tools detect.sh depends on are present, so users on
 # an unsupported shell/platform get a clear, actionable message instead of a cryptic
 # awk/git failure mid-scan. Core tools are required; jq/gh are optional (correlation
@@ -366,14 +389,17 @@ cmd_preflight() {
     command -v "$t" >/dev/null 2>&1 || \
       echo "defect-scan preflight: optional '$t' not found — needed for issue correlation/filing" >&2
   done
+  command -v codex >/dev/null 2>&1 || \
+    echo "defect-scan preflight: optional 'codex' not found — needed for --cross-model verification" >&2
   echo "defect-scan preflight: OK — core tools present"
 }
 
 main() {
   sub="${1:-}"; [ $# -gt 0 ] && shift || true
   case "$sub" in
-    preflight) cmd_preflight "$@" ;;
-    eval)      cmd_eval "$@" ;;
+    preflight)    cmd_preflight "$@" ;;
+    eval)         cmd_eval "$@" ;;
+    codex-verify) cmd_codex_verify "$@" ;;
     stacks)    cmd_stacks "$@" ;;
     tool)      cmd_tool "$@" ;;
     scope)     cmd_scope "$@" ;;
@@ -386,7 +412,7 @@ main() {
     patterns)  cmd_patterns "$@" ;;
     __fmget)   fm_get "$@" ;;
     __fmfield) fm_field "$@" ;;
-    *) echo "usage: detect.sh {preflight|eval|stacks|tool|scope|triage|issues|issues-create|issues-ensure-label|labels|profiles|patterns} ..." >&2; return 2 ;;
+    *) echo "usage: detect.sh {preflight|eval|codex-verify|stacks|tool|scope|triage|issues|issues-create|issues-ensure-label|labels|profiles|patterns} ..." >&2; return 2 ;;
   esac
 }
 main "$@"
