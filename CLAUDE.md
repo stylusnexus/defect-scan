@@ -31,6 +31,9 @@ skills/scan/lib/detect.sh scope    <target> <--full?> <repo>
 skills/scan/lib/detect.sh triage   <repo>      # reads file list on stdin
 skills/scan/lib/detect.sh profiles <repo>      # name⇥path⇥origin, one per line
 skills/scan/lib/detect.sh tool <name> <cwd>    # resolve an analyzer binary (exit 1 = unresolved)
+skills/scan/lib/detect.sh issues <terms>       # search tracker (correlation/dedup; read; exit 3 if no gh)
+skills/scan/lib/detect.sh labels               # list repo labels (for label/priority proposal; exit 3 if no gh)
+skills/scan/lib/detect.sh issues-create <title> <body-file> [labels]   # file an issue (write; exit 3 if no gh)
 ```
 
 Run a single test by description: `bats tests/detect.bats -f "triage: ranks"`.
@@ -110,6 +113,15 @@ This skill *finds and reports* defects; it is not a debugger or a PR reviewer. T
 `--fix` applies only the `## Auto-fix-safe` subset of the **High** tier and re-runs
 the tool to confirm; it **refuses on a dirty working tree** so fixes stay revertable.
 Type-checker findings and behavior-changing lint rules are never auto-fixed.
+
+`--file-issues` (Stage 4b) files a tracker issue per **[NEW]** finding — opt-in,
+write-gated (needs authenticated `gh`), and **dedup-mandatory**: it requires Stage 4a
+correlation (refuses with `--no-correlate`) and only files [NEW], never re-filing a
+[LIKELY FILED]/[RELATED]/[VERIFY REGRESSION] match. It reuses the repo's existing
+defect/priority labels (via `detect.sh labels`) rather than assuming, and confirms
+the batch first. The shell primitives (`issues-create`, `issues-ensure-label`,
+`labels`) are dumb create/list helpers — the dedup and label/priority *policy* live
+in SKILL.md because they require reasoning over search results, not string matching.
 
 ## Shipping work
 

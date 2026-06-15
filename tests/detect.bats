@@ -273,6 +273,100 @@ setup() {
   [[ "$output" != *"#"* ]]             # no issue rows emitted to stdout
 }
 
+@test "issues-create: requires a title and a body file" {
+  run "$DETECT" issues-create "only a title"
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"usage:"* ]]
+}
+
+@test "issues-create: errors (exit 2) when the body file is missing" {
+  export DEFECT_SCAN_GH="$BATS_TEST_DIRNAME/fixtures/gh-stub/gh"
+  run "$DETECT" issues-create "a title" "/nonexistent/body.md"
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"body file not found"* ]]
+}
+
+@test "issues-create: files an issue and prints the new URL, passing title + labels through" {
+  export DEFECT_SCAN_GH="$BATS_TEST_DIRNAME/fixtures/gh-stub/gh"
+  export GH_STUB_LOG="$BATS_TEST_TMPDIR/ghlog"
+  body="$BATS_TEST_TMPDIR/body.md"; printf '## Defect\nsome details\n' > "$body"
+  run "$DETECT" issues-create "[High] auth.py:42 · cat#3 SQL injection" "$body" "defect-scan,bug"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"https://github.com/example/repo/issues/9999"* ]]   # URL for back-reference
+  log="$(cat "$GH_STUB_LOG")"
+  [[ "$log" == *"--label defect-scan,bug"* ]]                          # labels passed through
+  [[ "$log" == *"--title [High] auth.py:42 · cat#3 SQL injection"* ]]  # title passed through
+  [[ "$log" == *"--body-file"* ]]                                      # body passed via file
+}
+
+@test "issues-create: degrades cleanly (exit 3, no URL) when gh unavailable" {
+  export DEFECT_SCAN_GH="/nonexistent/gh-binary-xyz"
+  body="$BATS_TEST_TMPDIR/body2.md"; echo x > "$body"
+  run "$DETECT" issues-create "a title" "$body"
+  [ "$status" -eq 3 ]
+  [[ "$output" == *"gh not available"* ]]
+  [[ "$output" != *"http"* ]]          # nothing filed
+}
+
+@test "issues-ensure-label: best-effort create succeeds with the stub" {
+  export DEFECT_SCAN_GH="$BATS_TEST_DIRNAME/fixtures/gh-stub/gh"
+  run "$DETECT" issues-ensure-label defect-scan
+  [ "$status" -eq 0 ]
+}
+
+@test "issues-ensure-label: exit 3 when gh unavailable (caller treats as best-effort)" {
+  export DEFECT_SCAN_GH="/nonexistent/gh-binary-xyz"
+  run "$DETECT" issues-ensure-label defect-scan
+  [ "$status" -eq 3 ]
+}
+
+@test "issues-create: degrades cleanly with no-op set -- when no labels are given" {
+  export DEFECT_SCAN_GH="$BATS_TEST_DIRNAME/fixtures/gh-stub/gh"
+  export GH_STUB_LOG="$BATS_TEST_TMPDIR/ghlog-nolabel"
+  body="$BATS_TEST_TMPDIR/body3.md"; echo x > "$body"
+  run "$DETECT" issues-create "no-label title" "$body"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"issues/9999"* ]]
+  [[ "$(cat "$GH_STUB_LOG")" != *"--label"* ]]   # no --label flag emitted
+}
+
+@test "issues-create: carries a kind+priority label pair through (e.g. defect-scan,P1)" {
+  export DEFECT_SCAN_GH="$BATS_TEST_DIRNAME/fixtures/gh-stub/gh"
+  export GH_STUB_LOG="$BATS_TEST_TMPDIR/ghlog-prio"
+  body="$BATS_TEST_TMPDIR/bodyp.md"; echo x > "$body"
+  run "$DETECT" issues-create "[High] a finding" "$body" "defect-scan,P1"
+  [ "$status" -eq 0 ]
+  [[ "$(cat "$GH_STUB_LOG")" == *"--label defect-scan,P1"* ]]
+}
+
+@test "issues-ensure-label: creates a priority label (P0) best-effort" {
+  export DEFECT_SCAN_GH="$BATS_TEST_DIRNAME/fixtures/gh-stub/gh"
+  run "$DETECT" issues-ensure-label P0 b60205 "Highest priority"
+  [ "$status" -eq 0 ]
+}
+
+@test "labels: lists existing repo label names" {
+  export DEFECT_SCAN_GH="$BATS_TEST_DIRNAME/fixtures/gh-stub/gh"
+  run "$DETECT" labels
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"bug"* ]]
+  [[ "$output" == *"defect"* ]]      # a defect-related label the SKILL can propose
+}
+
+@test "labels: degrades cleanly (exit 3) when gh unavailable" {
+  export DEFECT_SCAN_GH="/nonexistent/gh-binary-xyz"
+  run "$DETECT" labels
+  [ "$status" -eq 3 ]
+  [[ "$output" == *"gh not available"* ]]
+}
+
+@test "detect.sh usage lists the issue-filing subcommands" {
+  run "$DETECT" bogus
+  [[ "$output" == *"issues-create"* ]]
+  [[ "$output" == *"issues-ensure-label"* ]]
+  [[ "$output" == *"labels"* ]]
+}
+
 @test "SKILL.md documents depth cap and correlation stage" {
   f="$BATS_TEST_DIRNAME/../skills/scan/SKILL.md"
   grep -q -- "--depth N" "$f"

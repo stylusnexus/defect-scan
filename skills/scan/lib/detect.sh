@@ -195,6 +195,51 @@ cmd_issues() {
   printf '%s' "$out" | jq -r '.[] | "#\(.number)\t\(.state)\t\(.title)"'
 }
 
+# List the remote repo's existing label names (one per line). The SKILL reasons
+# over these to PROPOSE an existing defect-related label (bug/defect/…) rather than
+# assuming one or creating noise. Degrades cleanly (exit 3) when gh is missing or
+# the query fails. DEFECT_SCAN_GH overrides the binary (tests stay offline).
+cmd_labels() {
+  gh_bin="${DEFECT_SCAN_GH:-gh}"
+  command -v "$gh_bin" >/dev/null 2>&1 || {
+    echo "defect-scan: gh not available; cannot read labels" >&2; return 3; }
+  "$gh_bin" label list --limit "${DEFECT_SCAN_LABEL_LIMIT:-200}" --json name --jq '.[].name' 2>/dev/null || {
+    echo "defect-scan: label query failed (no remote / not authenticated)" >&2; return 3; }
+}
+
+# Ensure a label exists before filing. Best-effort: an "already exists" error is
+# fine (we only want it present), and a failure here must NEVER block filing — the
+# caller ignores the exit. Exit 3 if gh is unavailable. DEFECT_SCAN_GH overrides.
+# Usage: detect.sh issues-ensure-label <name> [color] [description]
+cmd_issues_ensure_label() {
+  [ $# -ge 1 ] || { echo "usage: detect.sh issues-ensure-label <name> [color] [desc]" >&2; return 2; }
+  gh_bin="${DEFECT_SCAN_GH:-gh}"
+  command -v "$gh_bin" >/dev/null 2>&1 || return 3
+  name="$1"; color="${2:-5319e7}"; desc="${3:-Filed by defect-scan}"
+  "$gh_bin" label create "$name" --color "$color" --description "$desc" >/dev/null 2>&1 || true
+}
+
+# File a tracker issue from a finding. OUTWARD-FACING and DEDUP-GATED: the SKILL
+# must call this ONLY for findings the correlation stage (cmd_issues) tagged [NEW],
+# and only after confirming the batch with the user (see SKILL Stage 4b). This
+# helper is the dumb create primitive — it does not itself dedupe; the dedupe gate
+# lives in the SKILL because it requires reasoning over search results, not string
+# matching. Prints the new issue URL on success. Degrades cleanly (exit 3) when gh
+# is missing/unauthenticated, like cmd_issues. DEFECT_SCAN_GH overrides the binary
+# (tests stay offline). Body is passed via file so multi-line content is safe.
+# Usage: detect.sh issues-create <title> <body-file> [comma,separated,labels]
+cmd_issues_create() {
+  [ $# -ge 2 ] || { echo "usage: detect.sh issues-create <title> <body-file> [comma,labels]" >&2; return 2; }
+  title="$1"; body_file="$2"; labels="${3:-}"
+  [ -f "$body_file" ] || { echo "defect-scan: body file not found: $body_file" >&2; return 2; }
+  gh_bin="${DEFECT_SCAN_GH:-gh}"
+  command -v "$gh_bin" >/dev/null 2>&1 || {
+    echo "defect-scan: gh not available; cannot file issue" >&2; return 3; }
+  if [ -n "$labels" ]; then set -- --label "$labels"; else set --; fi
+  "$gh_bin" issue create --title "$title" --body-file "$body_file" "$@" 2>/dev/null || {
+    echo "defect-scan: issue creation failed (no remote / not authenticated / label missing)" >&2; return 3; }
+}
+
 # fm_field <name> <key> [repo]: effective value for <key> of profile <name>,
 # taking the highest-precedence layer that DEFINES the key (field inheritance).
 fm_field() {
@@ -259,12 +304,15 @@ main() {
     tool)      cmd_tool "$@" ;;
     scope)     cmd_scope "$@" ;;
     triage)    cmd_triage "$@" ;;
-    issues)    cmd_issues "$@" ;;
+    issues)              cmd_issues "$@" ;;
+    issues-create)       cmd_issues_create "$@" ;;
+    issues-ensure-label) cmd_issues_ensure_label "$@" ;;
+    labels)              cmd_labels "$@" ;;
     profiles)  cmd_profiles "$@" ;;
     patterns)  cmd_patterns "$@" ;;
     __fmget)   fm_get "$@" ;;
     __fmfield) fm_field "$@" ;;
-    *) echo "usage: detect.sh {stacks|tool|scope|triage|issues|profiles|patterns} ..." >&2; return 2 ;;
+    *) echo "usage: detect.sh {stacks|tool|scope|triage|issues|issues-create|issues-ensure-label|labels|profiles|patterns} ..." >&2; return 2 ;;
   esac
 }
 main "$@"

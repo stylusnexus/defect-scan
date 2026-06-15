@@ -1,9 +1,33 @@
 #!/usr/bin/env sh
-# Minimal `gh` stub for offline correlation tests. Ignores args, emits canned
-# `gh issue list --json number,state,title` output.
-cat <<'JSON'
+# Minimal `gh` stub for offline tests. Branches on the subcommand so both the
+# read path (issue list → canned JSON) and the write path (issue create / label
+# create) can be exercised without a network or a real repo.
+case "$1 $2" in
+  "issue list")
+    cat <<'JSON'
 [
   {"number":5421,"state":"OPEN","title":"Credit deducted without refund on async generation early-returns"},
   {"number":1274,"state":"CLOSED","title":"fix(billing): add credit deduction to /api/ai/generate (1 credits)"}
 ]
 JSON
+    ;;
+  "issue create")
+    # gh prints the new issue URL to stdout. Record args to $GH_STUB_LOG (if set)
+    # so tests can assert label/title pass-through — the real caller redirects this
+    # command's stderr to /dev/null, so a file sink is the reliable channel.
+    [ -n "${GH_STUB_LOG:-}" ] && echo "create: $*" >> "$GH_STUB_LOG"
+    echo "https://github.com/example/repo/issues/9999"
+    ;;
+  "label list")
+    # `gh label list --json name --jq '.[].name'` → newline-separated names.
+    # The stub ignores the jq expr and just emits the names directly.
+    printf '%s\n' bug enhancement documentation defect "good first issue"
+    ;;
+  "label create")
+    [ -n "${GH_STUB_LOG:-}" ] && echo "label: $*" >> "$GH_STUB_LOG"
+    ;;
+  *)
+    echo "gh-stub: unhandled subcommand: $*" >&2
+    exit 1
+    ;;
+esac

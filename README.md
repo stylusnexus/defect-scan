@@ -11,7 +11,7 @@ confidence tiers (correlated against the issue tracker). Report-only by default;
 .claude-plugin/plugin.json     # plugin manifest
 skills/scan/                   # the skill — invoked as /defect-scan:scan
   SKILL.md  profiles/  patterns/  baseline-categories.md  report-format.md
-  lib/detect.sh                # deterministic plumbing (scope/stacks/tool/triage/issues)
+  lib/detect.sh                # deterministic plumbing (scope/stacks/tool/triage/issues/labels)
 commands/help.md               # /defect-scan:help
 hooks/                         # opt-in pre-commit advisory (hooks.json + pre-commit-scan.sh)
 scripts/setup-optional-tools.sh# one-liner installer for the optional analyzers
