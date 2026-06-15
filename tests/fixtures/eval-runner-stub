@@ -22,6 +22,11 @@ case "$mode" in
       clean_*|Clean*) printf '<<<EVAL\nEVAL>>>\n' ;;
       *)              printf '<<<EVAL\n%s:%s\nEVAL>>>\n' "$base" "$finding" ;;
     esac ;;
+  splitaware)
+    case "$fixture" in
+      */seen/*) printf '<<<EVAL\n%s:%s\nEVAL>>>\n' "$base" "$finding" ;;
+      *)        printf '<<<EVAL\nEVAL>>>\n' ;;   # held-out: find nothing
+    esac ;;
   missing)   : ;;                          # no block at all
   dup)       printf '<<<EVAL\n%s:%s\nEVAL>>>\n<<<EVAL\nEVAL>>>\n' "$base" "$finding" ;;
   malformed) printf '<<<EVAL\nnot-a-valid-line\nEVAL>>>\n' ;;

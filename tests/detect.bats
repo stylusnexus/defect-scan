@@ -263,6 +263,21 @@ _mk_baseline() {  # $1=path $2=pfloor $3=rfloor $4=pbase $5=rbase $6=noise
   grep -q "precision_baseline=1.00" "$c/foo/baseline.seen.txt"
 }
 
+@test "eval-run --split all FLAGs overfitting when seen >> held-out" {
+  c="$BATS_TEST_TMPDIR/c"
+  mkdir -p "$c/foo/seen" "$c/foo/held-out"
+  for sp in seen held-out; do
+    printf 'x\n' > "$c/foo/$sp/bug_one.ext"; printf '4:cat#2\n' > "$c/foo/$sp/bug_one.ext.expected"
+  done
+  _mk_baseline "$c/foo/baseline.seen.txt"     0.50 0.30 0.50 0.30 0.10
+  _mk_baseline "$c/foo/baseline.held-out.txt" 0.50 0.30 0.50 0.30 0.10
+  DEFECT_SCAN_EVAL_CORPUS="$c" \
+  DEFECT_SCAN_EVAL_RUNNER="$BATS_TEST_DIRNAME/fixtures/eval-runner-stub" \
+  DEFECT_SCAN_STUB_MODE=splitaware DEFECT_SCAN_STUB_FINDING="4:cat#2" \
+    run "$DETECT" eval-run foo --split all --runs 2
+  [[ "$output" == *"overfit"* ]] || [[ "$output" == *"FLAG"* ]]
+}
+
 @test "eval-gaps: flags a category with expected defects but zero detected" {
   c="$BATS_TEST_TMPDIR/c"; mkdir -p "$c/foo/seen"
   printf 'x\n' > "$c/foo/seen/bug_a.ext"; printf '3:cat#3\n' > "$c/foo/seen/bug_a.ext.expected"

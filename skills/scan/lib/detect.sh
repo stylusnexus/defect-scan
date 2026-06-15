@@ -523,6 +523,23 @@ cmd_eval_run() {
       eval_gate "$root/$lang/baseline.$sp.txt" "$mp" "$mr" "$clean_fp_runs" || overall_rc=1
     fi
   done
+
+  if [ "$split" = all ]; then
+    sa="$root/$lang/.last-run.seen.txt"; ha="$root/$lang/.last-run.held-out.txt"
+    if [ -f "$sa" ] && [ -f "$ha" ]; then
+      smp="$(_bv "$sa" mean_precision)"; hmp="$(_bv "$ha" mean_precision)"
+      smr="$(_bv "$sa" mean_recall)";    hmr="$(_bv "$ha" mean_recall)"
+      ob="$(_bv "$root/$lang/baseline.seen.txt" overfit_band)"; [ -n "$ob" ] || ob=0.15
+      # Overfit shows as a seen-vs-held-out gap in EITHER metric: a profile memorized to
+      # the seen set drops held-out RECALL; one tuned to avoid seen FPs drops held-out
+      # PRECISION. (Precision alone misses the recall case — zero held-out findings score
+      # a vacuous precision=1.00.)
+      if awk -v sp="$smp" -v hp="$hmp" -v sr="$smr" -v hr="$hmr" -v o="$ob" \
+           'BEGIN{exit !((sp-hp)>o || (sr-hr)>o)}'; then
+        echo "eval-run $lang: FLAG overfit — seen P=$smp R=$smr vs held-out P=$hmp R=$hmr (gap > overfit_band $ob)"
+      fi
+    fi
+  fi
   return "$overall_rc"
 }
 
