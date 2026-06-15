@@ -317,7 +317,7 @@ setup() {
 }
 
 @test "every profile declares the four required sections in order" {
-  for p in generic python react-typescript dart ruby go csharp java yaml rust kotlin swift php; do
+  for p in generic python react-typescript dart ruby go csharp java yaml rust kotlin swift php shell; do
     f="$BATS_TEST_DIRNAME/../skills/scan/profiles/$p.md"
     [ -f "$f" ]
     grep -qE '^## Detection'           "$f"
@@ -724,6 +724,35 @@ setup() {
   [[ "$output" == *"php"* ]]
 }
 
+@test "stacks: detects shell extension-only (empty detect_files)" {
+  run "$DETECT" stacks "$BATS_TEST_DIRNAME/fixtures/shell"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"shell"* ]]
+}
+
+@test "eval: shell corpus scores a clean run 1.0 and has a near-miss" {
+  corpus="$BATS_TEST_DIRNAME/eval/shell/seen"
+  [ -s "$corpus/bug_unquoted.sh.expected" ]
+  [ -f "$corpus/clean_cd_guard.sh.expected" ] && [ ! -s "$corpus/clean_cd_guard.sh.expected" ]
+  f="$BATS_TEST_TMPDIR/sh"
+  {
+    echo "bug_unquoted.sh:3:quoting"
+    echo "bug_cd_unchecked.sh:3:cat#2"
+    echo "bug_eval.sh:3:cat#3"
+  } > "$f"
+  run "$DETECT" eval "$corpus" "$f"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"precision=1.00"* ]]
+  [[ "$output" == *"recall=1.00"* ]]
+}
+
+@test "shellcheck flags the planted unquoted-var (SC2086) in the shell fixture" {
+  tool="$("$DETECT" tool shellcheck "$BATS_TEST_DIRNAME/fixtures/shell" || true)"
+  [ -n "$tool" ] || skip "shellcheck not installed"
+  run "$tool" -f gcc "$BATS_TEST_DIRNAME/eval/shell/seen/bug_unquoted.sh"
+  [[ "$output" == *"SC2086"* ]]
+}
+
 @test "eval: php corpus scores a clean run 1.0 and has a near-miss" {
   corpus="$BATS_TEST_DIRNAME/eval/php/seen"
   [ -s "$corpus/bug_sql_injection.php.expected" ]
@@ -852,6 +881,8 @@ setup() {
   [ "$("$DETECT" __fmget "$P/php.md" name)" = "php" ]
   [[ "$("$DETECT" __fmget "$P/php.md" extensions)" == *"php"* ]]
   [[ "$("$DETECT" __fmget "$P/php.md" detect_files)" == *"composer.json"* ]]
+  [ "$("$DETECT" __fmget "$P/shell.md" name)" = "shell" ]
+  [[ "$("$DETECT" __fmget "$P/shell.md" extensions)" == *"sh"* ]]   # detect_files intentionally empty
 }
 
 @test "profiles: lists built-ins with origin=builtin" {
