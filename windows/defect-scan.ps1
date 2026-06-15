@@ -10,7 +10,7 @@
 
   Why a delegating shim (not a native rewrite): every defect-scan subcommand shells
   out to `git`, and Git for Windows bundles `bash`. So "has git but no bash" is
-  effectively impossible — and the tool needs git regardless. Delegating keeps a
+  effectively impossible -- and the tool needs git regardless. Delegating keeps a
   single source of truth and guarantees identical behavior across platforms.
 
 .EXAMPLE
@@ -19,7 +19,7 @@
 #>
 [CmdletBinding()]
 param(
-  # Not named $Args — that shadows PowerShell's automatic variable (PSScriptAnalyzer
+  # Not named $Args -- that shadows PowerShell's automatic variable (PSScriptAnalyzer
   # PSAvoidAssignmentToAutomaticVariable). These are the subcommand + flags to pass
   # straight through to detect.sh.
   [Parameter(ValueFromRemainingArguments = $true)]
