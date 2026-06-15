@@ -417,9 +417,40 @@ cmd_codex_verify() {
 }
 
 # --- eval-run: model-FREE orchestrator over the swappable runner -------------
-# Phase 4 replaces these temporary stubs with the real gate + baseline writer.
-eval_gate() { return 0; }
-eval_update_baseline() { :; }
+
+# _bv <file> <key>: read a key=value baseline value (empty if absent).
+_bv() { sed -n "s/^$2=//p" "$1" 2>/dev/null | head -n 1; }
+
+# eval_gate <baseline-file> <mean_precision> <mean_recall> <clean_fp_runs>
+# Precision-first. Prints one verdict line; exit nonzero ONLY on FAIL.
+eval_gate() {
+  bf="$1"; mp="$2"; mr="$3"; cfp="$4"
+  pf="$(_bv "$bf" precision_floor)"; rf="$(_bv "$bf" recall_floor)"
+  pb="$(_bv "$bf" precision_baseline)"; nb="$(_bv "$bf" noise_band)"
+  [ -n "$pf" ] || pf=0; [ -n "$rf" ] || rf=0; [ -n "$pb" ] || pb=0; [ -n "$nb" ] || nb=0
+  if awk -v p="$mp" -v f="$pf" -v b="$pb" -v n="$nb" 'BEGIN{exit !(p<f || p<(b-n))}'; then
+    echo "eval-gate: FAIL — mean_precision=$mp (floor=$pf, baseline=$pb, noise_band=$nb)"
+    return 1
+  fi
+  rc_msg="PASS"
+  if [ "${cfp:-0}" -gt 0 ] 2>/dev/null; then rc_msg="FLAG (clean-fixture FP in $cfp run(s))"; fi
+  if awk -v r="$mr" -v f="$rf" 'BEGIN{exit !(r<f)}'; then
+    rc_msg="$rc_msg; WARN (mean_recall=$mr < floor=$rf)"
+  fi
+  echo "eval-gate: $rc_msg — mean_precision=$mp mean_recall=$mr"
+  return 0
+}
+
+# eval_update_baseline <baseline-file> <mean_precision> <mean_recall>
+# Writes/refreshes the recorded baseline means, PRESERVING existing floors/bands.
+eval_update_baseline() {
+  bf="$1"; mp="$2"; mr="$3"
+  pf="$(_bv "$bf" precision_floor)"; rf="$(_bv "$bf" recall_floor)"
+  nb="$(_bv "$bf" noise_band)"; ob="$(_bv "$bf" overfit_band)"
+  [ -n "$pf" ] || pf=0.90; [ -n "$rf" ] || rf=0.70; [ -n "$nb" ] || nb=0.05; [ -n "$ob" ] || ob=0.10
+  printf 'precision_floor=%s\nrecall_floor=%s\nprecision_baseline=%s\nrecall_baseline=%s\nnoise_band=%s\noverfit_band=%s\n' \
+    "$pf" "$rf" "$mp" "$mr" "$nb" "$ob" > "$bf"
+}
 
 # eval-run <lang> [--runs N] [--split seen|held-out|all] [--update-baseline]
 # Model-FREE orchestrator. Per split: N runs, each run scans every SOURCE fixture via
@@ -563,7 +594,10 @@ main() {
     __fmget)   fm_get "$@" ;;
     __fmfield) fm_field "$@" ;;
     __evalblock) extract_eval_block ;;
+    __evalgate)   eval_gate "$@" ;;
+    __evalupdate) eval_update_baseline "$@" ;;
     *) echo "usage: detect.sh {preflight|eval|eval-categories|eval-run|codex-verify|stacks|tool|scope|triage|issues|issues-create|issues-ensure-label|labels|profiles|patterns} ..." >&2; return 2 ;;
   esac
 }
+
 main "$@"

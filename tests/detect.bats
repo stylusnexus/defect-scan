@@ -212,6 +212,57 @@ _mk_eval_corpus() {  # $1 = root, $2 = lang
   [[ "$output" == *"partial"* ]] || [[ "$output" == *"inconclusive"* ]]
 }
 
+_mk_baseline() {  # $1=path $2=pfloor $3=rfloor $4=pbase $5=rbase $6=noise
+  printf 'precision_floor=%s\nrecall_floor=%s\nprecision_baseline=%s\nrecall_baseline=%s\nnoise_band=%s\noverfit_band=0.10\n' \
+    "$2" "$3" "$4" "$5" "$6" > "$1"
+}
+
+@test "eval_gate: PASS when precision >= floor and recall ok" {
+  b="$BATS_TEST_TMPDIR/b.txt"; _mk_baseline "$b" 0.90 0.70 0.94 0.75 0.05
+  run "$DETECT" __evalgate "$b" 0.95 0.80 0
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"PASS"* ]]
+}
+
+@test "eval_gate: FAIL when mean precision below floor" {
+  b="$BATS_TEST_TMPDIR/b.txt"; _mk_baseline "$b" 0.90 0.70 0.94 0.75 0.05
+  run "$DETECT" __evalgate "$b" 0.80 0.80 0
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"FAIL"* ]]
+}
+
+@test "eval_gate: FAIL on erosion (precision below baseline - noise_band)" {
+  b="$BATS_TEST_TMPDIR/b.txt"; _mk_baseline "$b" 0.50 0.50 0.94 0.75 0.05
+  run "$DETECT" __evalgate "$b" 0.85 0.80 0
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"FAIL"* ]]
+}
+
+@test "eval_gate: FLAG (exit 0) when clean-FP runs > 0" {
+  b="$BATS_TEST_TMPDIR/b.txt"; _mk_baseline "$b" 0.90 0.70 0.94 0.75 0.05
+  run "$DETECT" __evalgate "$b" 0.95 0.80 2
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"FLAG"* ]]
+}
+
+@test "eval_gate: WARN (exit 0) when recall below floor" {
+  b="$BATS_TEST_TMPDIR/b.txt"; _mk_baseline "$b" 0.90 0.70 0.94 0.75 0.05
+  run "$DETECT" __evalgate "$b" 0.95 0.60 0
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"WARN"* ]]
+}
+
+@test "eval-run --update-baseline writes the baseline file" {
+  c="$BATS_TEST_TMPDIR/c"; _mk_eval_corpus "$c" foo
+  DEFECT_SCAN_EVAL_CORPUS="$c" \
+  DEFECT_SCAN_EVAL_RUNNER="$BATS_TEST_DIRNAME/fixtures/eval-runner-stub" \
+  DEFECT_SCAN_STUB_MODE=perfect \
+    run "$DETECT" eval-run foo --runs 2 --update-baseline
+  [ "$status" -eq 0 ]
+  [ -f "$c/foo/baseline.seen.txt" ]
+  grep -q "precision_baseline=1.00" "$c/foo/baseline.seen.txt"
+}
+
 @test "codex-verify: requires a prompt file" {
   run "$DETECT" codex-verify
   [ "$status" -eq 2 ]
