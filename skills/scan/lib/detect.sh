@@ -526,6 +526,60 @@ cmd_eval_run() {
   return "$overall_rc"
 }
 
+# _eval_gaps_expected <dir>: emit one category label per expected defect across all
+# non-empty .expected files in <dir> (the part after "<line>:"). Skips comment/blank
+# lines. Kept a separate function so its `case` is not nested in a command
+# substitution (older bash mis-parses `case` inside `$(...)`).
+_eval_gaps_expected() {
+  for e in "$1"/*.expected; do
+    [ -s "$e" ] || continue
+    while IFS= read -r ln || [ -n "$ln" ]; do
+      [ -n "$ln" ] || continue
+      case "$ln" in \#*) continue ;; esac
+      printf '%s\n' "${ln#*:}"
+    done < "$e"
+  done
+}
+
+# eval-gaps <lang> [--split seen|held-out]: model-FREE completeness critic (report
+# half). Reads the .last-run artifact (last run's findings + recall) and reports, per
+# category in the registry, how many defects the corpus EXPECTS vs how many the last
+# run DETECTED. Surfaces zero-coverage and weak categories. No writes; no model.
+cmd_eval_gaps() {
+  lang=""; split="seen"
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --split) split="${2:?}"; shift 2 ;;
+      -*) echo "eval-gaps: unknown flag $1" >&2; return 2 ;;
+      *) lang="$1"; shift ;;
+    esac
+  done
+  [ -n "$lang" ] || { echo "usage: detect.sh eval-gaps <lang> [--split seen|held-out]" >&2; return 2; }
+  root="$(eval_corpus_root)"; dir="$root/$lang/$split"
+  art="$root/$lang/.last-run.$split.txt"
+  [ -d "$dir" ] || { echo "eval-gaps: no corpus split: $dir" >&2; return 2; }
+  [ -f "$art" ] || { echo "eval-gaps: no run artifact ($art) — run 'eval-run $lang --split $split' first" >&2; return 2; }
+
+  exp_counts="$(_eval_gaps_expected "$dir" | sort | uniq -c)"
+  det="$(sed -n '/^@findings$/,$p' "$art" | sed '1d')"
+
+  echo "eval-gaps $lang/$split:"
+  printf '%s\n' "$exp_counts" | while read -r cnt cat; do
+    [ -n "$cat" ] || continue
+    found="$(printf '%s\n' "$det" | grep -c ":$cat\$" 2>/dev/null || true)"
+    if [ "${found:-0}" -eq 0 ]; then
+      echo "  GAP: $cat — $cnt expected, 0 detected"
+    elif [ "$found" -lt "$cnt" ]; then
+      echo "  weak: $cat — $cnt expected, $found detected"
+    else
+      echo "  ok:   $cat — $cnt expected, $found detected"
+    fi
+  done
+  cmd_eval_categories "$lang" | while IFS= read -r cat; do
+    printf '%s\n' "$exp_counts" | grep -q " $cat\$" || echo "  uncovered: $cat — no corpus fixtures"
+  done
+}
+
 # eval_clean_fp <dir> <findings>: exit 0 if any CLEAN fixture (empty .expected) appears
 # in the findings file (an FP), else exit 1.
 eval_clean_fp() {
@@ -580,6 +634,7 @@ main() {
     eval)         cmd_eval "$@" ;;
     eval-categories) cmd_eval_categories "$@" ;;
     eval-run)     cmd_eval_run "$@" ;;
+    eval-gaps)    cmd_eval_gaps "$@" ;;
     codex-verify) cmd_codex_verify "$@" ;;
     stacks)    cmd_stacks "$@" ;;
     tool)      cmd_tool "$@" ;;
@@ -596,7 +651,7 @@ main() {
     __evalblock) extract_eval_block ;;
     __evalgate)   eval_gate "$@" ;;
     __evalupdate) eval_update_baseline "$@" ;;
-    *) echo "usage: detect.sh {preflight|eval|eval-categories|eval-run|codex-verify|stacks|tool|scope|triage|issues|issues-create|issues-ensure-label|labels|profiles|patterns} ..." >&2; return 2 ;;
+    *) echo "usage: detect.sh {preflight|eval|eval-categories|eval-run|eval-gaps|codex-verify|stacks|tool|scope|triage|issues|issues-create|issues-ensure-label|labels|profiles|patterns} ..." >&2; return 2 ;;
   esac
 }
 

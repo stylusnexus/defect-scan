@@ -263,6 +263,26 @@ _mk_baseline() {  # $1=path $2=pfloor $3=rfloor $4=pbase $5=rbase $6=noise
   grep -q "precision_baseline=1.00" "$c/foo/baseline.seen.txt"
 }
 
+@test "eval-gaps: flags a category with expected defects but zero detected" {
+  c="$BATS_TEST_TMPDIR/c"; mkdir -p "$c/foo/seen"
+  printf 'x\n' > "$c/foo/seen/bug_a.ext"; printf '3:cat#3\n' > "$c/foo/seen/bug_a.ext.expected"
+  printf 'x\n' > "$c/foo/seen/bug_b.ext"; printf '4:cat#4\n' > "$c/foo/seen/bug_b.ext.expected"
+  cat > "$c/foo/.last-run.seen.txt" <<'EOF'
+runs=3
+mean_precision=1.00
+stddev_precision=0.00
+mean_recall=0.50
+stddev_recall=0.00
+clean_fp_runs=0
+@findings
+bug_a.ext:3:cat#3
+EOF
+  DEFECT_SCAN_EVAL_CORPUS="$c" run "$DETECT" eval-gaps foo
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"cat#4"* ]]
+  [[ "$output" == *"0 detected"* ]] || [[ "$output" == *"GAP"* ]]
+}
+
 @test "codex-verify: requires a prompt file" {
   run "$DETECT" codex-verify
   [ "$status" -eq 2 ]
