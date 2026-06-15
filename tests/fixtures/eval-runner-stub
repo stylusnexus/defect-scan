@@ -1,0 +1,43 @@
+#!/usr/bin/env sh
+# Deterministic stub runner for the eval harness tests (no model).
+# Usage: eval-runner-stub <fixture-path> <lang>
+# Behavior is driven by DEFECT_SCAN_STUB_MODE so a test can simulate each case:
+#   ok        -> emit a correct block keyed by the fixture basename + DEFECT_SCAN_STUB_FINDING
+#   empty     -> emit a present-but-empty block (legit "no findings"; correct for clean)
+#   missing   -> emit NO block (protocol error)
+#   dup       -> emit two blocks (protocol error)
+#   malformed -> emit a block with a bad line (protocol error)
+#   bugonly   -> emit a finding ONLY for names containing the literal marker "BUG";
+#                empty block otherwise (lets a clean, dotted-name fixture whose name
+#                is a regex variant of the buggy one — e.g. "x.UGy" vs "xBUGy" — coexist
+#                with a detected buggy fixture without itself being detected)
+# DEFECT_SCAN_STUB_FINDING = "<line>:<category>" appended after the basename (mode=ok).
+set -eu
+fixture="${1:?stub: need fixture path}"
+base="$(basename "$fixture")"
+mode="${DEFECT_SCAN_STUB_MODE:-ok}"
+finding="${DEFECT_SCAN_STUB_FINDING:-1:cat#2}"
+echo "stub scan report for $base"        # stand-in for the human report
+case "$mode" in
+  ok)        printf '<<<EVAL\n%s:%s\nEVAL>>>\n' "$base" "$finding" ;;
+  empty)     printf '<<<EVAL\nEVAL>>>\n' ;;
+  perfect)
+    case "$base" in
+      clean_*|Clean*) printf '<<<EVAL\nEVAL>>>\n' ;;
+      *)              printf '<<<EVAL\n%s:%s\nEVAL>>>\n' "$base" "$finding" ;;
+    esac ;;
+  splitaware)
+    case "$fixture" in
+      */seen/*) printf '<<<EVAL\n%s:%s\nEVAL>>>\n' "$base" "$finding" ;;
+      *)        printf '<<<EVAL\nEVAL>>>\n' ;;   # held-out: find nothing
+    esac ;;
+  bugonly)
+    case "$base" in
+      *BUG*) printf '<<<EVAL\n%s:%s\nEVAL>>>\n' "$base" "$finding" ;;
+      *)     printf '<<<EVAL\nEVAL>>>\n' ;;
+    esac ;;
+  missing)   : ;;                          # no block at all
+  dup)       printf '<<<EVAL\n%s:%s\nEVAL>>>\n<<<EVAL\nEVAL>>>\n' "$base" "$finding" ;;
+  malformed) printf '<<<EVAL\nnot-a-valid-line\nEVAL>>>\n' ;;
+  *)         echo "stub: unknown mode $mode" >&2; exit 2 ;;
+esac

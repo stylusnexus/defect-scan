@@ -125,7 +125,10 @@ or add a defect pattern. To extend defect-scan *privately* (no PR), see
 (private reporting — don't open a public issue).
 
 CI runs the bats suite, a POSIX-shell syntax check, and a gitleaks secret scan on
-every PR. Releases are automated: [release-please](https://github.com/googleapis/release-please)
+every PR. Scan quality is measured against a labeled corpus (`tests/eval/`); the
+loop-closing harness that scores it is **maintainer-run** (manual, not on PR), and a
+green eval means the change *didn't get worse*, not that it got better at the real job.
+Releases are automated: [release-please](https://github.com/googleapis/release-please)
 generates [CHANGELOG.md](./CHANGELOG.md) and bumps the version from Conventional
 Commit titles at deploy.
 

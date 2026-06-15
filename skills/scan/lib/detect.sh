@@ -6,6 +6,30 @@ set -eu
 # Absolute path to this skill dir (the dir containing lib/). Works via symlink.
 skill_dir() { CDPATH= cd -- "$(dirname -- "$0")/.." && pwd; }
 
+# eval_corpus_root: where the labeled eval corpus lives. Defaults to the repo's
+# tests/eval (resolved from this script's location), overridable for tests.
+eval_corpus_root() {
+  printf '%s\n' "${DEFECT_SCAN_EVAL_CORPUS:-$(skill_dir)/../../tests/eval}"
+}
+
+# extract_eval_block: read runner output on stdin; emit the validated findings of the
+# single <<<EVAL ... EVAL>>> block to stdout (possibly empty). Exit 4 = PROTOCOL ERROR:
+# zero blocks, more than one block, or any malformed line. The missing(=4) vs
+# empty(=0, no output) distinction is load-bearing — a missing block on a clean fixture
+# must NOT score as a perfect run.
+extract_eval_block() {
+  in="$(cat)"
+  nstart=$(printf '%s\n' "$in" | grep -c '^<<<EVAL$' 2>/dev/null || true)
+  nend=$(printf '%s\n' "$in" | grep -c '^EVAL>>>$' 2>/dev/null || true)
+  [ "$nstart" = "1" ] && [ "$nend" = "1" ] || return 4
+  body=$(printf '%s\n' "$in" | sed -n '/^<<<EVAL$/,/^EVAL>>>$/p' | sed '1d;$d')
+  # every non-empty body line must be <path>:<line>:<category>
+  bad=$(printf '%s\n' "$body" | grep -vE '^$|^[^:]+:[0-9]+:[^:]+$' | grep -c . 2>/dev/null || true)
+  [ "$bad" = "0" ] || return 4
+  # print non-empty lines only (empty block => no output)
+  printf '%s\n' "$body" | grep -v '^$' || true
+}
+
 # fm_get <file> <key>: print the frontmatter value for <key>. Frontmatter is the
 # block between the first two '---' lines. Lists (comma/space) → space-separated.
 # Trailing '# comment' is stripped. Prints nothing if absent / no frontmatter.
@@ -348,6 +372,27 @@ cmd_eval() {
   }'
 }
 
+# eval-categories <lang>: the authoritative valid-label set for a language —
+# baseline cat#1..5 UNION every label present in that language's corpus .expected
+# files. Model-FREE (pure set union over existing artifacts). Used by eval-mode (tell
+# the model which labels to emit) and eval-gaps (per-category coverage denominator).
+cmd_eval_categories() {
+  lang="${1:?usage: detect.sh eval-categories <lang>}"
+  root="$(eval_corpus_root)"
+  [ -d "$root/$lang" ] || { echo "eval-categories: no corpus for '$lang' under $root" >&2; return 2; }
+  {
+    printf 'cat#1\ncat#2\ncat#3\ncat#4\ncat#5\n'
+    # labels are the part after "<line>:" in each non-empty, non-comment .expected line
+    find "$root/$lang" -name '*.expected' -type f 2>/dev/null | while IFS= read -r f; do
+      while IFS= read -r ln || [ -n "$ln" ]; do
+        [ -n "$ln" ] || continue
+        case "$ln" in \#*) continue ;; esac
+        printf '%s\n' "${ln#*:}"
+      done < "$f"
+    done
+  } | sort -u
+}
+
 # codex-verify <prompt-file>: cross-model second opinion via Codex (a DIFFERENT model
 # than the one running the scan = different blind spots). Runs Codex NON-INTERACTIVELY
 # and READ-ONLY — it may reason and read, but never write or run side-effecting
@@ -369,6 +414,225 @@ cmd_codex_verify() {
     rm -f "$out"
     echo "defect-scan: codex exec failed (cross-model verification skipped)" >&2; return 3
   fi
+}
+
+# --- eval-run: model-FREE orchestrator over the swappable runner -------------
+
+# _bv <file> <key>: read a key=value baseline value (empty if absent).
+_bv() { sed -n "s/^$2=//p" "$1" 2>/dev/null | head -n 1; }
+
+# eval_gate <baseline-file> <mean_precision> <mean_recall> <clean_fp_runs>
+# Precision-first. Prints one verdict line; exit nonzero ONLY on FAIL.
+eval_gate() {
+  bf="$1"; mp="$2"; mr="$3"; cfp="$4"
+  pf="$(_bv "$bf" precision_floor)"; rf="$(_bv "$bf" recall_floor)"
+  pb="$(_bv "$bf" precision_baseline)"; nb="$(_bv "$bf" noise_band)"
+  [ -n "$pf" ] || pf=0; [ -n "$rf" ] || rf=0; [ -n "$pb" ] || pb=0; [ -n "$nb" ] || nb=0
+  if awk -v p="$mp" -v f="$pf" -v b="$pb" -v n="$nb" 'BEGIN{exit !(p<f || p<(b-n))}'; then
+    echo "eval-gate: FAIL — mean_precision=$mp (floor=$pf, baseline=$pb, noise_band=$nb)"
+    return 1
+  fi
+  rc_msg="PASS"
+  if [ "${cfp:-0}" -gt 0 ] 2>/dev/null; then rc_msg="FLAG (clean-fixture FP in $cfp run(s))"; fi
+  if awk -v r="$mr" -v f="$rf" 'BEGIN{exit !(r<f)}'; then
+    rc_msg="$rc_msg; WARN (mean_recall=$mr < floor=$rf)"
+  fi
+  echo "eval-gate: $rc_msg — mean_precision=$mp mean_recall=$mr"
+  return 0
+}
+
+# eval_update_baseline <baseline-file> <mean_precision> <mean_recall>
+# Writes/refreshes the recorded baseline means, PRESERVING existing floors/bands.
+eval_update_baseline() {
+  bf="$1"; mp="$2"; mr="$3"
+  pf="$(_bv "$bf" precision_floor)"; rf="$(_bv "$bf" recall_floor)"
+  nb="$(_bv "$bf" noise_band)"; ob="$(_bv "$bf" overfit_band)"
+  [ -n "$pf" ] || pf=0.90; [ -n "$rf" ] || rf=0.70; [ -n "$nb" ] || nb=0.05; [ -n "$ob" ] || ob=0.10
+  printf 'precision_floor=%s\nrecall_floor=%s\nprecision_baseline=%s\nrecall_baseline=%s\nnoise_band=%s\noverfit_band=%s\n' \
+    "$pf" "$rf" "$mp" "$mr" "$nb" "$ob" > "$bf"
+}
+
+# eval-run <lang> [--runs N] [--split seen|held-out|all] [--update-baseline]
+# Model-FREE orchestrator. Per split: N runs, each run scans every SOURCE fixture via
+# the swappable $DEFECT_SCAN_EVAL_RUNNER (per-fixture), accumulates findings into one
+# file, and scores the whole split ONCE with cmd_eval. Aggregates mean/stddev and the
+# clean-fixture FP rate, writes the .last-run artifact, then gates (Phase 4).
+cmd_eval_run() {
+  lang=""; runs=5; split="seen"; update=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --runs) runs="${2:?}"; shift 2 ;;
+      --split) split="${2:?}"; shift 2 ;;
+      --update-baseline) update=1; shift ;;
+      -*) echo "eval-run: unknown flag $1" >&2; return 2 ;;
+      *) [ -z "$lang" ] && lang="$1" || { echo "eval-run: unexpected arg $1" >&2; return 2; }; shift ;;
+    esac
+  done
+  [ -n "$lang" ] || { echo "usage: detect.sh eval-run <lang> [--runs N] [--split seen|held-out|all]" >&2; return 2; }
+  runner="${DEFECT_SCAN_EVAL_RUNNER:-}"
+  [ -n "$runner" ] || { echo "eval-run: set DEFECT_SCAN_EVAL_RUNNER to a runner script (tests/eval/runners/*.sh)" >&2; return 3; }
+  root="$(eval_corpus_root)"
+  case "$split" in all) splits="seen held-out" ;; *) splits="$split" ;; esac
+
+  overall_rc=0
+  for sp in $splits; do
+    dir="$root/$lang/$sp"
+    if [ ! -d "$dir" ]; then
+      [ "$split" = all ] && { echo "eval-run: $lang/$sp absent — skipping"; continue; }
+      echo "eval-run: corpus split not found: $dir" >&2; return 2
+    fi
+    pvals=""; rvals=""; clean_fp_runs=0; partial=0
+    last_findings=""
+    r=1
+    while [ "$r" -le "$runs" ]; do
+      findings="$(mktemp 2>/dev/null || echo "/tmp/ds-er-$$.$r")"
+      for src in "$dir"/*; do
+        case "$src" in *.expected) continue ;; esac
+        [ -f "$src" ] || continue
+        out="$("$runner" "$src" "$lang" 2>/dev/null)" || { partial=1; continue; }
+        block="$(printf '%s' "$out" | extract_eval_block)" || { partial=1; continue; }
+        [ -n "$block" ] && printf '%s\n' "$block" >> "$findings"
+      done
+      m="$(cmd_eval "$dir" "$findings")"
+      p="$(printf '%s\n' "$m" | sed -n 's/.*precision=\([0-9.]*\).*/\1/p')"
+      rr="$(printf '%s\n' "$m" | sed -n 's/.*recall=\([0-9.]*\).*/\1/p')"
+      pvals="$pvals $p"; rvals="$rvals $rr"
+      if eval_clean_fp "$dir" "$findings"; then clean_fp_runs=$((clean_fp_runs+1)); fi
+      last_findings="$(cat "$findings")"
+      rm -f "$findings"
+      r=$((r+1))
+    done
+
+    mp="$(_eval_mean $pvals)"; sp_p="$(_eval_stddev $pvals)"
+    mr="$(_eval_mean $rvals)"; sp_r="$(_eval_stddev $rvals)"
+
+    art="$root/$lang/.last-run.$sp.txt"
+    {
+      printf 'runs=%s\nmean_precision=%s\nstddev_precision=%s\nmean_recall=%s\nstddev_recall=%s\nclean_fp_runs=%s\n' \
+        "$runs" "$mp" "$sp_p" "$mr" "$sp_r" "$clean_fp_runs"
+      printf '@findings\n%s\n' "$last_findings"
+    } > "$art"
+
+    echo "eval-run $lang/$sp: runs=$runs mean_precision=$mp(±$sp_p) mean_recall=$mr(±$sp_r) clean_fp_runs=$clean_fp_runs"
+    [ "$partial" = 1 ] && echo "eval-run $lang/$sp: PARTIAL — at least one fixture run was inconclusive (missing/invalid block)"
+
+    if [ "$update" = 1 ]; then
+      if [ "$partial" = 1 ]; then
+        echo "eval-run $lang/$sp: PARTIAL — refusing to update baseline from an inconclusive run" >&2
+        overall_rc=1
+      else
+        eval_update_baseline "$root/$lang/baseline.$sp.txt" "$mp" "$mr"
+        echo "eval-run $lang/$sp: baseline updated (commit via CODEOWNERS PR)"
+      fi
+    else
+      eval_gate "$root/$lang/baseline.$sp.txt" "$mp" "$mr" "$clean_fp_runs" || overall_rc=1
+      if [ "$partial" = 1 ]; then
+        echo "eval-run $lang/$sp: PARTIAL run is not a pass — failing (investigate runner/model setup)"
+        overall_rc=1
+      fi
+    fi
+  done
+
+  if [ "$split" = all ]; then
+    sa="$root/$lang/.last-run.seen.txt"; ha="$root/$lang/.last-run.held-out.txt"
+    if [ -f "$sa" ] && [ -f "$ha" ]; then
+      smp="$(_bv "$sa" mean_precision)"; hmp="$(_bv "$ha" mean_precision)"
+      smr="$(_bv "$sa" mean_recall)";    hmr="$(_bv "$ha" mean_recall)"
+      ob="$(_bv "$root/$lang/baseline.seen.txt" overfit_band)"; [ -n "$ob" ] || ob=0.15
+      # Overfit shows as a seen-vs-held-out gap in EITHER metric: a profile memorized to
+      # the seen set drops held-out RECALL; one tuned to avoid seen FPs drops held-out
+      # PRECISION. (Precision alone misses the recall case — zero held-out findings score
+      # a vacuous precision=1.00.)
+      if awk -v sp="$smp" -v hp="$hmp" -v sr="$smr" -v hr="$hmr" -v o="$ob" \
+           'BEGIN{exit !((sp-hp)>o || (sr-hr)>o)}'; then
+        echo "eval-run $lang: FLAG overfit — seen P=$smp R=$smr vs held-out P=$hmp R=$hmr (gap > overfit_band $ob)"
+      fi
+    fi
+  fi
+  return "$overall_rc"
+}
+
+# _eval_gaps_expected <dir>: emit one category label per expected defect across all
+# non-empty .expected files in <dir> (the part after "<line>:"). Skips comment/blank
+# lines. Kept a separate function so its `case` is not nested in a command
+# substitution (older bash mis-parses `case` inside `$(...)`).
+_eval_gaps_expected() {
+  for e in "$1"/*.expected; do
+    [ -s "$e" ] || continue
+    while IFS= read -r ln || [ -n "$ln" ]; do
+      [ -n "$ln" ] || continue
+      case "$ln" in \#*) continue ;; esac
+      printf '%s\n' "${ln#*:}"
+    done < "$e"
+  done
+}
+
+# eval-gaps <lang> [--split seen|held-out]: model-FREE completeness critic (report
+# half). Reads the .last-run artifact (last run's findings + recall) and reports, per
+# category in the registry, how many defects the corpus EXPECTS vs how many the last
+# run DETECTED. Surfaces zero-coverage and weak categories. No writes; no model.
+cmd_eval_gaps() {
+  lang=""; split="seen"
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --split) split="${2:?}"; shift 2 ;;
+      -*) echo "eval-gaps: unknown flag $1" >&2; return 2 ;;
+      *) lang="$1"; shift ;;
+    esac
+  done
+  [ -n "$lang" ] || { echo "usage: detect.sh eval-gaps <lang> [--split seen|held-out]" >&2; return 2; }
+  root="$(eval_corpus_root)"; dir="$root/$lang/$split"
+  art="$root/$lang/.last-run.$split.txt"
+  [ -d "$dir" ] || { echo "eval-gaps: no corpus split: $dir" >&2; return 2; }
+  [ -f "$art" ] || { echo "eval-gaps: no run artifact ($art) — run 'eval-run $lang --split $split' first" >&2; return 2; }
+
+  exp_counts="$(_eval_gaps_expected "$dir" | sort | uniq -c)"
+  det="$(sed -n '/^@findings$/,$p' "$art" | sed '1d')"
+
+  echo "eval-gaps $lang/$split:"
+  printf '%s\n' "$exp_counts" | while read -r cnt cat; do
+    [ -n "$cat" ] || continue
+    found="$(printf '%s\n' "$det" | awk -F: -v c="$cat" '$NF==c{n++} END{print n+0}')"
+    if [ "${found:-0}" -eq 0 ]; then
+      echo "  GAP: $cat — $cnt expected, 0 detected"
+    elif [ "$found" -lt "$cnt" ]; then
+      echo "  weak: $cat — $cnt expected, $found detected"
+    else
+      echo "  ok:   $cat — $cnt expected, $found detected"
+    fi
+  done
+  cmd_eval_categories "$lang" | while IFS= read -r cat; do
+    # Exact (literal) compare on the category field — `uniq -c` lines are
+    # "<count> <category>", so $NF is the label. A regex grep here would let a
+    # metachar label (e.g. "a.c") spuriously match a sibling ("axc") and suppress
+    # a real "uncovered" report; match exactly, as the detected side does.
+    printf '%s\n' "$exp_counts" | awk -v c="$cat" '$NF==c{f=1} END{exit !f}' \
+      || echo "  uncovered: $cat — no corpus fixtures"
+  done
+}
+
+# eval_clean_fp <dir> <findings>: exit 0 if any CLEAN fixture (empty .expected) appears
+# in the findings file (an FP), else exit 1.
+eval_clean_fp() {
+  d="$1"; f="$2"
+  for exp in "$d"/*.expected; do
+    [ -f "$exp" ] || continue
+    [ -s "$exp" ] && continue
+    base="$(basename "$exp" .expected)"
+    if awk -F: -v b="$base" '{p=$1; sub(/.*\//,"",p); if(p==b){found=1}} END{exit !found}' "$f"; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+# _eval_mean / _eval_stddev: arithmetic mean and POPULATION stddev of space-separated
+# decimals, printed to 2 dp. Empty input -> 0.00.
+_eval_mean() { awk 'BEGIN{n=0;s=0; for(i=1;i<=ARGC-1;i++){s+=ARGV[i];n++}; printf "%.2f", n? s/n:0}' "$@"; }
+_eval_stddev() {
+  awk 'BEGIN{n=0;s=0; for(i=1;i<=ARGC-1;i++){a[++n]=ARGV[i];s+=ARGV[i]}
+       if(!n){printf "0.00"; exit} m=s/n; v=0; for(i=1;i<=n;i++)v+=(a[i]-m)*(a[i]-m);
+       printf "%.2f", sqrt(v/n)}' "$@"
 }
 
 # preflight: verify the external tools detect.sh depends on are present, so users on
@@ -399,6 +663,9 @@ main() {
   case "$sub" in
     preflight)    cmd_preflight "$@" ;;
     eval)         cmd_eval "$@" ;;
+    eval-categories) cmd_eval_categories "$@" ;;
+    eval-run)     cmd_eval_run "$@" ;;
+    eval-gaps)    cmd_eval_gaps "$@" ;;
     codex-verify) cmd_codex_verify "$@" ;;
     stacks)    cmd_stacks "$@" ;;
     tool)      cmd_tool "$@" ;;
@@ -412,7 +679,11 @@ main() {
     patterns)  cmd_patterns "$@" ;;
     __fmget)   fm_get "$@" ;;
     __fmfield) fm_field "$@" ;;
-    *) echo "usage: detect.sh {preflight|eval|codex-verify|stacks|tool|scope|triage|issues|issues-create|issues-ensure-label|labels|profiles|patterns} ..." >&2; return 2 ;;
+    __evalblock) extract_eval_block ;;
+    __evalgate)   eval_gate "$@" ;;
+    __evalupdate) eval_update_baseline "$@" ;;
+    *) echo "usage: detect.sh {preflight|eval|eval-categories|eval-run|eval-gaps|codex-verify|stacks|tool|scope|triage|issues|issues-create|issues-ensure-label|labels|profiles|patterns} ..." >&2; return 2 ;;
   esac
 }
+
 main "$@"

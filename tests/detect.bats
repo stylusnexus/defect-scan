@@ -119,6 +119,242 @@ setup() {
   [[ "$output" == *"eval"* ]]
 }
 
+@test "extract_eval_block: one valid block returns its lines (exit 0)" {
+  run sh -c 'printf "noise\n<<<EVAL\na.py:4:cat#2\nb.py:5:cat#3\nEVAL>>>\nmore\n" | "$0" __evalblock' "$DETECT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"a.py:4:cat#2"* ]] && [[ "$output" == *"b.py:5:cat#3"* ]]
+}
+
+@test "extract_eval_block: present-but-empty block is OK (exit 0, no output)" {
+  run sh -c 'printf "<<<EVAL\nEVAL>>>\n" | "$0" __evalblock' "$DETECT"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "extract_eval_block: MISSING block is a protocol error (exit 4)" {
+  run sh -c 'printf "just a report, no block\n" | "$0" __evalblock' "$DETECT"
+  [ "$status" -eq 4 ]
+}
+
+@test "extract_eval_block: duplicate blocks are a protocol error (exit 4)" {
+  run sh -c 'printf "<<<EVAL\nEVAL>>>\n<<<EVAL\nEVAL>>>\n" | "$0" __evalblock' "$DETECT"
+  [ "$status" -eq 4 ]
+}
+
+@test "extract_eval_block: malformed line is a protocol error (exit 4)" {
+  run sh -c 'printf "<<<EVAL\nnot-valid\nEVAL>>>\n" | "$0" __evalblock' "$DETECT"
+  [ "$status" -eq 4 ]
+}
+
+@test "eval-categories: baseline cats unioned with corpus-specific labels" {
+  run "$DETECT" eval-categories rust
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"cat#1"* ]] && [[ "$output" == *"cat#5"* ]]
+  [[ "$output" == *"panic"* ]]            # rust corpus uses a language-specific label
+}
+
+@test "eval-categories: yaml has coerce, shell has quoting" {
+  run "$DETECT" eval-categories yaml
+  [[ "$output" == *"coerce"* ]]
+  run "$DETECT" eval-categories shell
+  [[ "$output" == *"quoting"* ]]
+}
+
+@test "eval-categories: honors DEFECT_SCAN_EVAL_CORPUS override" {
+  mkdir -p "$BATS_TEST_TMPDIR/c/foo/seen"
+  printf '3:widget\n' > "$BATS_TEST_TMPDIR/c/foo/seen/bug_x.ext.expected"
+  DEFECT_SCAN_EVAL_CORPUS="$BATS_TEST_TMPDIR/c" run "$DETECT" eval-categories foo
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"widget"* ]] && [[ "$output" == *"cat#3"* ]]
+}
+
+_mk_eval_corpus() {  # $1 = root, $2 = lang
+  mkdir -p "$1/$2/seen"
+  printf 'x\n' > "$1/$2/seen/bug_one.ext"
+  printf '1:cat#2\n' > "$1/$2/seen/bug_one.ext.expected"   # matches the stub's default finding
+  printf 'x\n' > "$1/$2/seen/clean_ok.ext"
+  : > "$1/$2/seen/clean_ok.ext.expected"   # empty sidecar => clean
+}
+
+@test "eval-run: exit 3 when DEFECT_SCAN_EVAL_RUNNER is unset" {
+  c="$BATS_TEST_TMPDIR/c"; _mk_eval_corpus "$c" foo
+  DEFECT_SCAN_EVAL_CORPUS="$c" run env -u DEFECT_SCAN_EVAL_RUNNER "$DETECT" eval-run foo
+  [ "$status" -eq 3 ]
+}
+
+@test "eval-run: a clean run over the corpus scores precision/recall 1.00" {
+  c="$BATS_TEST_TMPDIR/c"; _mk_eval_corpus "$c" foo
+  DEFECT_SCAN_EVAL_CORPUS="$c" \
+  DEFECT_SCAN_EVAL_RUNNER="$BATS_TEST_DIRNAME/fixtures/eval-runner-stub" \
+  DEFECT_SCAN_STUB_MODE=perfect \
+    run "$DETECT" eval-run foo --runs 3
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"mean_precision=1.00"* ]]
+  [[ "$output" == *"mean_recall=1.00"* ]]
+  [[ "$output" == *"clean_fp_runs=0"* ]]
+}
+
+@test "eval-run: a finding on the clean fixture shows up as clean-FP rate" {
+  c="$BATS_TEST_TMPDIR/c"; _mk_eval_corpus "$c" foo
+  DEFECT_SCAN_EVAL_CORPUS="$c" \
+  DEFECT_SCAN_EVAL_RUNNER="$BATS_TEST_DIRNAME/fixtures/eval-runner-stub" \
+  DEFECT_SCAN_STUB_MODE=ok DEFECT_SCAN_STUB_FINDING="4:cat#2" \
+    run "$DETECT" eval-run foo --runs 2
+  [[ "$output" == *"clean_fp_runs=2"* ]]
+}
+
+@test "eval-run: a missing block marks the run partial (not a silent pass)" {
+  c="$BATS_TEST_TMPDIR/c"; _mk_eval_corpus "$c" foo
+  DEFECT_SCAN_EVAL_CORPUS="$c" \
+  DEFECT_SCAN_EVAL_RUNNER="$BATS_TEST_DIRNAME/fixtures/eval-runner-stub" \
+  DEFECT_SCAN_STUB_MODE=missing \
+    run "$DETECT" eval-run foo --runs 1
+  [[ "$output" == *"partial"* ]] || [[ "$output" == *"inconclusive"* ]]
+}
+
+_mk_baseline() {  # $1=path $2=pfloor $3=rfloor $4=pbase $5=rbase $6=noise
+  printf 'precision_floor=%s\nrecall_floor=%s\nprecision_baseline=%s\nrecall_baseline=%s\nnoise_band=%s\noverfit_band=0.10\n' \
+    "$2" "$3" "$4" "$5" "$6" > "$1"
+}
+
+@test "eval-run: an all-inconclusive run fails (partial is never a green pass)" {
+  c="$BATS_TEST_TMPDIR/c"; _mk_eval_corpus "$c" foo
+  _mk_baseline "$c/foo/baseline.seen.txt" 0.80 0.50 0.80 0.50 0.10
+  DEFECT_SCAN_EVAL_CORPUS="$c" \
+  DEFECT_SCAN_EVAL_RUNNER="$BATS_TEST_DIRNAME/fixtures/eval-runner-stub" \
+  DEFECT_SCAN_STUB_MODE=missing \
+    run "$DETECT" eval-run foo --runs 1
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"PARTIAL"* ]]
+}
+
+@test "eval-run --update-baseline refuses on a partial run" {
+  c="$BATS_TEST_TMPDIR/c"; _mk_eval_corpus "$c" foo
+  DEFECT_SCAN_EVAL_CORPUS="$c" \
+  DEFECT_SCAN_EVAL_RUNNER="$BATS_TEST_DIRNAME/fixtures/eval-runner-stub" \
+  DEFECT_SCAN_STUB_MODE=missing \
+    run "$DETECT" eval-run foo --runs 1 --update-baseline
+  [ "$status" -ne 0 ]
+  [ ! -f "$c/foo/baseline.seen.txt" ]      # nothing written from a broken run
+}
+
+@test "eval_gate: PASS when precision >= floor and recall ok" {
+  b="$BATS_TEST_TMPDIR/b.txt"; _mk_baseline "$b" 0.90 0.70 0.94 0.75 0.05
+  run "$DETECT" __evalgate "$b" 0.95 0.80 0
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"PASS"* ]]
+}
+
+@test "eval_gate: FAIL when mean precision below floor" {
+  b="$BATS_TEST_TMPDIR/b.txt"; _mk_baseline "$b" 0.90 0.70 0.94 0.75 0.05
+  run "$DETECT" __evalgate "$b" 0.80 0.80 0
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"FAIL"* ]]
+}
+
+@test "eval_gate: FAIL on erosion (precision below baseline - noise_band)" {
+  b="$BATS_TEST_TMPDIR/b.txt"; _mk_baseline "$b" 0.50 0.50 0.94 0.75 0.05
+  run "$DETECT" __evalgate "$b" 0.85 0.80 0
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"FAIL"* ]]
+}
+
+@test "eval_gate: FLAG (exit 0) when clean-FP runs > 0" {
+  b="$BATS_TEST_TMPDIR/b.txt"; _mk_baseline "$b" 0.90 0.70 0.94 0.75 0.05
+  run "$DETECT" __evalgate "$b" 0.95 0.80 2
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"FLAG"* ]]
+}
+
+@test "eval_gate: WARN (exit 0) when recall below floor" {
+  b="$BATS_TEST_TMPDIR/b.txt"; _mk_baseline "$b" 0.90 0.70 0.94 0.75 0.05
+  run "$DETECT" __evalgate "$b" 0.95 0.60 0
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"WARN"* ]]
+}
+
+@test "eval-run --update-baseline writes the baseline file" {
+  c="$BATS_TEST_TMPDIR/c"; _mk_eval_corpus "$c" foo
+  DEFECT_SCAN_EVAL_CORPUS="$c" \
+  DEFECT_SCAN_EVAL_RUNNER="$BATS_TEST_DIRNAME/fixtures/eval-runner-stub" \
+  DEFECT_SCAN_STUB_MODE=perfect \
+    run "$DETECT" eval-run foo --runs 2 --update-baseline
+  [ "$status" -eq 0 ]
+  [ -f "$c/foo/baseline.seen.txt" ]
+  grep -q "precision_baseline=1.00" "$c/foo/baseline.seen.txt"
+}
+
+@test "eval-run --split all FLAGs overfitting when seen >> held-out" {
+  c="$BATS_TEST_TMPDIR/c"
+  mkdir -p "$c/foo/seen" "$c/foo/held-out"
+  for sp in seen held-out; do
+    printf 'x\n' > "$c/foo/$sp/bug_one.ext"; printf '4:cat#2\n' > "$c/foo/$sp/bug_one.ext.expected"
+  done
+  _mk_baseline "$c/foo/baseline.seen.txt"     0.50 0.30 0.50 0.30 0.10
+  _mk_baseline "$c/foo/baseline.held-out.txt" 0.50 0.30 0.50 0.30 0.10
+  DEFECT_SCAN_EVAL_CORPUS="$c" \
+  DEFECT_SCAN_EVAL_RUNNER="$BATS_TEST_DIRNAME/fixtures/eval-runner-stub" \
+  DEFECT_SCAN_STUB_MODE=splitaware DEFECT_SCAN_STUB_FINDING="4:cat#2" \
+    run "$DETECT" eval-run foo --split all --runs 2
+  [[ "$output" == *"overfit"* ]] || [[ "$output" == *"FLAG"* ]]
+}
+
+@test "eval-gaps: flags a category with expected defects but zero detected" {
+  c="$BATS_TEST_TMPDIR/c"; mkdir -p "$c/foo/seen"
+  printf 'x\n' > "$c/foo/seen/bug_a.ext"; printf '3:cat#3\n' > "$c/foo/seen/bug_a.ext.expected"
+  printf 'x\n' > "$c/foo/seen/bug_b.ext"; printf '4:cat#4\n' > "$c/foo/seen/bug_b.ext.expected"
+  cat > "$c/foo/.last-run.seen.txt" <<'EOF'
+runs=3
+mean_precision=1.00
+stddev_precision=0.00
+mean_recall=0.50
+stddev_recall=0.00
+clean_fp_runs=0
+@findings
+bug_a.ext:3:cat#3
+EOF
+  DEFECT_SCAN_EVAL_CORPUS="$c" run "$DETECT" eval-gaps foo
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"cat#4"* ]]
+  [[ "$output" == *"0 detected"* ]] || [[ "$output" == *"GAP"* ]]
+}
+
+@test "eval_clean_fp matches basenames exactly (no regex-dot false positive)" {
+  c="$BATS_TEST_TMPDIR/c"; mkdir -p "$c/foo/seen"
+  # Buggy fixture (contains literal marker BUG) -> detected under bugonly mode,
+  # emitting finding line "xBUGy:1:cat#2".
+  printf 'x\n' > "$c/foo/seen/xBUGy"; printf '1:cat#2\n' > "$c/foo/seen/xBUGy.expected"
+  # CLEAN fixture (empty .expected). Its basename AS A REGEX ("x.UGy") matches the
+  # detected line "xBUGy:..." — but as a literal it does not, and bugonly does not
+  # detect it (no literal BUG). The buggy regex must therefore NOT register a clean-FP.
+  printf 'x\n' > "$c/foo/seen/x.UGy"; : > "$c/foo/seen/x.UGy.expected"
+  DEFECT_SCAN_EVAL_CORPUS="$c" \
+  DEFECT_SCAN_EVAL_RUNNER="$BATS_TEST_DIRNAME/fixtures/eval-runner-stub" \
+  DEFECT_SCAN_STUB_MODE=bugonly DEFECT_SCAN_STUB_FINDING="1:cat#2" \
+    run "$DETECT" eval-run foo --runs 1
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"clean_fp_runs=0"* ]]
+}
+
+@test "eval-gaps category match is exact (no regex-dot cross-match)" {
+  c="$BATS_TEST_TMPDIR/c"; mkdir -p "$c/foo/seen"
+  printf 'x\n' > "$c/foo/seen/bug_a.ext"; printf '3:a.c\n' > "$c/foo/seen/bug_a.ext.expected"  # category literally "a.c"
+  cat > "$c/foo/.last-run.seen.txt" <<'EOF'
+runs=1
+mean_precision=1.00
+stddev_precision=0.00
+mean_recall=0.00
+stddev_recall=0.00
+clean_fp_runs=0
+@findings
+bug_a.ext:3:axc
+EOF
+  # detected category is "axc", expected is "a.c" — these must NOT match (regex-dot would)
+  DEFECT_SCAN_EVAL_CORPUS="$c" run "$DETECT" eval-gaps foo
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"GAP: a.c"* ]] || [[ "$output" == *"a.c — 1 expected, 0 detected"* ]]
+}
+
 @test "codex-verify: requires a prompt file" {
   run "$DETECT" codex-verify
   [ "$status" -eq 2 ]
@@ -1066,4 +1302,25 @@ setup() {
   grep -q "EXTENDING.md" "$root/README.md"
   grep -q "EXTENDING.md" "$root/commands/help.md"
   grep -q "TEMPLATE.md.example" "$root/EXTENDING.md"
+}
+
+@test "eval-mode contract exists and both drivers reference it" {
+  root="$BATS_TEST_DIRNAME/.."
+  [ -f "$root/skills/scan/eval-mode.md" ]
+  grep -q "<<<EVAL" "$root/skills/scan/eval-mode.md"
+  grep -q "EVAL>>>" "$root/skills/scan/eval-mode.md"
+  grep -q "eval-mode" "$root/skills/scan/SKILL.md"
+  grep -q "eval-mode" "$root/codex/defect-scan.md"
+}
+
+@test "runners exist, are read-only, force --lang, and never write" {
+  root="$BATS_TEST_DIRNAME/.."
+  for rn in claude codex; do
+    f="$root/tests/eval/runners/$rn.sh"
+    [ -x "$f" ]
+    sh -n "$f"
+    grep -q -- "--lang" "$f"
+  done
+  grep -q -- "--sandbox read-only" "$root/tests/eval/runners/codex.sh"
+  grep -Eq -- "--(permission-mode|allowedTools|disallowedTools)" "$root/tests/eval/runners/claude.sh"
 }
