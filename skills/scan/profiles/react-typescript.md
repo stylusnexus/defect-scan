@@ -1,3 +1,9 @@
+---
+name: react-typescript
+detect_files: tsconfig.json
+extensions: ts tsx
+tools: tsc eslint
+---
 # Profile: react-typescript
 
 ## Detection

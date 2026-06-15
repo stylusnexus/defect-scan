@@ -1,3 +1,9 @@
+---
+name: dart
+detect_files: pubspec.yaml
+extensions: dart
+tools: dart flutter
+---
 # Profile: dart (Flutter)
 
 ## Detection

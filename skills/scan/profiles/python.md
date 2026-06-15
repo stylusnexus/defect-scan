@@ -1,3 +1,9 @@
+---
+name: python
+detect_files: pyproject.toml setup.py
+extensions: py pyi
+tools: ruff mypy bandit pip-audit
+---
 # Profile: python
 
 ## Detection

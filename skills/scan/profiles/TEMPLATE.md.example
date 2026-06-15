@@ -1,0 +1,21 @@
+---
+name: <profile-name>            # required — unique id (lowercase), e.g. ruby
+detect_files: <file> <file>     # optional — manifest files; any present → match (e.g. Gemfile)
+extensions: <ext> <ext>         # optional — source extensions WITHOUT dots (e.g. rb); enables triage
+tools: <tool> <tool>            # optional — analyzer command NAMES only (e.g. rubocop)
+---
+# Profile: <profile-name>
+
+## Detection
+When this profile applies (mirror the frontmatter signals in prose).
+
+## Toolchain
+- `<tool> <args>`  — what it checks. Resolved via `detect.sh tool <name>`.
+Install hint: `<how to install the tools>`.
+
+## Reasoning checklist
+- cat#1 … cat#2 … cat#3 … cat#4 … cat#5 …  (specialize the 5 baseline categories)
+- <language>-specific: <the traps unique to this language>
+
+## Auto-fix-safe
+Which findings are safe to auto-apply (usually none unless tool-confirmed + trivial).

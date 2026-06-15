@@ -292,3 +292,136 @@ setup() {
   [[ "$output" == *"main.dart"* ]]
   [[ "$output" != *"README.md"* ]]
 }
+
+@test "fm_get: reads a scalar key" {
+  run "$DETECT" __fmget "$BATS_TEST_DIRNAME/fixtures/fm/sample.md" name
+  [ "$status" -eq 0 ]; [ "$output" = "dart" ]
+}
+@test "fm_get: normalizes comma/space lists to space-separated" {
+  run "$DETECT" __fmget "$BATS_TEST_DIRNAME/fixtures/fm/sample.md" extensions
+  [ "$output" = "dart flutter_gen" ]
+}
+@test "fm_get: strips trailing comments" {
+  run "$DETECT" __fmget "$BATS_TEST_DIRNAME/fixtures/fm/sample.md" tools
+  [ "$output" = "dart flutter" ]
+}
+@test "fm_get: empty for missing key or no frontmatter" {
+  run "$DETECT" __fmget "$BATS_TEST_DIRNAME/fixtures/fm/sample.md" nope
+  [ -z "$output" ]
+  run "$DETECT" __fmget "$BATS_TEST_DIRNAME/fixtures/empty/README.md" name
+  [ -z "$output" ]
+}
+
+@test "built-in profiles declare frontmatter (name + detection signals)" {
+  P="$BATS_TEST_DIRNAME/../skills/scan/profiles"
+  [ "$("$DETECT" __fmget "$P/generic.md" name)" = "generic" ]
+  [ "$("$DETECT" __fmget "$P/python.md" name)" = "python" ]
+  [[ "$("$DETECT" __fmget "$P/python.md" extensions)" == *"py"* ]]
+  [ "$("$DETECT" __fmget "$P/react-typescript.md" name)" = "react-typescript" ]
+  [[ "$("$DETECT" __fmget "$P/react-typescript.md" extensions)" == *"tsx"* ]]
+  [ "$("$DETECT" __fmget "$P/dart.md" name)" = "dart" ]
+  [[ "$("$DETECT" __fmget "$P/dart.md" detect_files)" == *"pubspec.yaml"* ]]
+}
+
+@test "profiles: lists built-ins with origin=builtin" {
+  run "$DETECT" profiles "$BATS_TEST_TMPDIR/none"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"dart"$'\t'* ]]
+  [[ "$output" == *"builtin"* ]]
+}
+
+@test "profiles: project layer shadows a same-named built-in" {
+  repo="$BATS_TEST_TMPDIR/proj"; mkdir -p "$repo/.defect-scan/profiles"
+  printf -- '---\nname: dart\nextensions: dart\n---\n' > "$repo/.defect-scan/profiles/dart.md"
+  run "$DETECT" profiles "$repo"
+  [ "$status" -eq 0 ]
+  [ "$(printf '%s\n' "$output" | awk -F'\t' '$1=="dart"' | wc -l | tr -d ' ')" -eq 1 ]
+  [[ "$(printf '%s\n' "$output" | awk -F'\t' '$1=="dart"{print $3}')" == "project" ]]
+}
+
+@test "profiles: --no-project (env) hides project layer" {
+  repo="$BATS_TEST_TMPDIR/proj2"; mkdir -p "$repo/.defect-scan/profiles"
+  printf -- '---\nname: zzlang\nextensions: zz\n---\n' > "$repo/.defect-scan/profiles/zzlang.md"
+  run env DEFECT_SCAN_NO_PROJECT=1 "$DETECT" profiles "$repo"
+  [[ "$output" != *"zzlang"* ]]
+}
+
+@test "fm_field: shadowing profile inherits an absent field from the shadowed one" {
+  repo="$BATS_TEST_TMPDIR/merge"; mkdir -p "$repo/.defect-scan/profiles"
+  printf -- '---\nname: dart\ntools: dart\n---\n## Detection\n' \
+    > "$repo/.defect-scan/profiles/dart.md"
+  run "$DETECT" __fmfield dart extensions "$repo"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"dart"* ]]
+}
+
+@test "fm_field: highest layer that defines the field wins" {
+  repo="$BATS_TEST_TMPDIR/merge2"; mkdir -p "$repo/.defect-scan/profiles"
+  printf -- '---\nname: python\nextensions: py pyi pyx\n---\n' \
+    > "$repo/.defect-scan/profiles/python.md"
+  run "$DETECT" __fmfield python extensions "$repo"
+  [[ "$output" == *"pyx"* ]]
+}
+
+@test "stacks: detects a profile with extensions-only (no detect_files)" {
+  repo="$BATS_TEST_TMPDIR/extonly"; mkdir -p "$repo/.defect-scan/profiles"
+  printf -- '---\nname: zz-lang\nextensions: zz\n---\n' > "$repo/.defect-scan/profiles/zz-lang.md"
+  : > "$repo/thing.zz"
+  run "$DETECT" stacks "$repo"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"zz-lang"* ]]
+}
+
+@test "stacks: zero-core-edit — a project profile teaches a new language" {
+  repo="$BATS_TEST_TMPDIR/toml"; mkdir -p "$repo/.defect-scan/profiles"
+  printf -- '---\nname: toml-lang\ndetect_files: foo.toml\nextensions: toml\n---\n' \
+    > "$repo/.defect-scan/profiles/toml-lang.md"
+  : > "$repo/foo.toml"
+  run "$DETECT" stacks "$repo"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"toml-lang"* ]]
+}
+
+@test "triage: zero-core-edit — a project profile's extension becomes scannable" {
+  repo="$BATS_TEST_TMPDIR/tomltriage"; mkdir -p "$repo/.defect-scan/profiles"
+  printf -- '---\nname: toml-lang\nextensions: toml\n---\n' \
+    > "$repo/.defect-scan/profiles/toml-lang.md"
+  cd "$repo" && git init -q
+  echo x > a.toml && echo y > b.md
+  git add -A && git -c user.email=t@t -c user.name=t commit -qm init
+  run bash -c "printf 'a.toml\nb.md\n' | '$DETECT' triage '$repo'"
+  [ "$status" -eq 0 ]
+  [ -n "$output" ]
+  [[ "$output" == *"a.toml"* ]]
+  [[ "$output" != *"b.md"* ]]
+}
+
+@test "patterns: lists built-in recurring.md plus a project pattern pack" {
+  repo="$BATS_TEST_TMPDIR/packs"; mkdir -p "$repo/.defect-scan/patterns"
+  printf '# P-custom — our billing rule\n' > "$repo/.defect-scan/patterns/custom.md"
+  run "$DETECT" patterns "$repo"
+  [ "$status" -eq 0 ]
+  [[ "${lines[0]}" == *"recurring.md" ]]
+  [[ "$output" == *".defect-scan/patterns/custom.md"* ]]
+}
+
+@test "detect.sh usage lists profiles and patterns subcommands" {
+  run "$DETECT" bogus
+  [[ "$output" == *"profiles"* ]]; [[ "$output" == *"patterns"* ]]
+}
+
+@test "SKILL.md documents origin-gated execution and layered profiles" {
+  f="$BATS_TEST_DIRNAME/../skills/scan/SKILL.md"
+  grep -qi "origin-gated\|origin=builtin\|CONFIRM" "$f"
+  grep -q "detect.sh patterns" "$f"
+  grep -q "DEFECT_SCAN_NO_PROJECT" "$f"
+}
+
+@test "extension docs exist: EXTENDING.md, template, help pointer" {
+  root="$BATS_TEST_DIRNAME/.."
+  [ -f "$root/EXTENDING.md" ]
+  [ -f "$root/skills/scan/profiles/TEMPLATE.md.example" ]
+  grep -q "EXTENDING.md" "$root/README.md"
+  grep -q "EXTENDING.md" "$root/commands/help.md"
+  grep -q "TEMPLATE.md.example" "$root/EXTENDING.md"
+}
