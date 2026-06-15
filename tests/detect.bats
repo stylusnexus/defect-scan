@@ -546,6 +546,17 @@ setup() {
   [ -x "$root/skills/scan/lib/detect.sh" ]
 }
 
+@test "codex plugin manifest: display name is 'Defect Scan', name is the slug, version in sync" {
+  root="$BATS_TEST_DIRNAME/.."
+  [ -f "$root/.codex-plugin/plugin.json" ]
+  [ "$(jq -r '.name' "$root/.codex-plugin/plugin.json")" = "defect-scan" ]           # install/invocation slug unchanged
+  [ "$(jq -r '.interface.displayName' "$root/.codex-plugin/plugin.json")" = "Defect Scan" ]  # human display name
+  # version must match the claude manifest — release-please bumps both; this guards the drift
+  cv="$(jq -r '.version' "$root/.codex-plugin/plugin.json")"
+  clv="$(jq -r '.version' "$root/.claude-plugin/plugin.json")"
+  [ "$cv" = "$clv" ]
+}
+
 @test "hook: no-op (exit 0, silent) when DEFECT_SCAN_HOOK is unset" {
   run env -u DEFECT_SCAN_HOOK sh "$BATS_TEST_DIRNAME/../hooks/pre-commit-scan.sh" <<< '{"tool_input":{"command":"git commit -m x"}}'
   [ "$status" -eq 0 ]
@@ -594,6 +605,22 @@ setup() {
   run "$DETECT" stacks "$BATS_TEST_DIRNAME/fixtures/ruby"
   [ "$status" -eq 0 ]
   [[ "$output" == *"ruby"* ]]
+}
+
+@test "eval: dart corpus scores a clean run 1.0 and has a near-miss" {
+  corpus="$BATS_TEST_DIRNAME/eval/dart/seen"
+  [ -s "$corpus/bug_context_async.dart.expected" ]
+  [ -f "$corpus/clean_mounted_check.dart.expected" ] && [ ! -s "$corpus/clean_mounted_check.dart.expected" ]
+  f="$BATS_TEST_TMPDIR/dart"
+  {
+    echo "bug_context_async.dart:4:cat#5"
+    echo "bug_undisposed_controller.dart:3:cat#4"
+    echo "bug_empty_catch.dart:3:cat#2"
+  } > "$f"
+  run "$DETECT" eval "$corpus" "$f"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"precision=1.00"* ]]
+  [[ "$output" == *"recall=1.00"* ]]
 }
 
 @test "eval: ruby corpus scores a clean run 1.0 and has a near-miss" {

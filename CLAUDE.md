@@ -164,6 +164,23 @@ steps or add repo-local copies:
 After a `--fix` run, defect-scan itself hands off remediation to
 `/review-merge-pipeline` rather than shipping fixes directly (see Scope boundaries).
 
+**Releasing → marketplace repin (do BOTH manifests).** After a `/deploy` cuts a new
+release `vX.Y.Z`, repin defect-scan in **both** of `stylusnexus/agent-plugins`'
+marketplace manifests — they are read by different harnesses and drift silently
+(this is what hid defect-scan from Codex; see issue #45):
+- `.claude-plugin/marketplace.json` (Claude Code) — entry uses `source: github` + `repo`
+  + `ref`. Bump `ref` → `vX.Y.Z`.
+- `.agents/plugins/marketplace.json` (Codex) — entry uses `source: url` + `<repo>.git`
+  + `ref`, **plus** a `policy` block (`installation: AVAILABLE`) and `category`. Bump
+  `ref` → `vX.Y.Z`.
+The display name a user sees is separate from the install slug: the slug is the
+manifest `name` (`defect-scan`, invoked `defect-scan@stylus-nexus` / `/defect-scan:scan`);
+the Codex **display name** ("Defect Scan") comes from this repo's
+`.codex-plugin/plugin.json` → `interface.displayName` (Claude title-cases the slug).
+release-please bumps the version in BOTH local plugin manifests (`.claude-plugin` and
+`.codex-plugin`) via `extra-files` — keep them in sync. agent-plugins has a CI check
+(issue #45) that fails if the two marketplace manifests disagree on a plugin's `ref`.
+
 **Repo infrastructure (public-readiness):** `.github/workflows/ci.yml` runs the bats
 suite + `sh -n` + a gitleaks secret scan on every PR — keep it green and POSIX-clean.
 Releases are automated: `release-please` (`release-please-config.json`,
