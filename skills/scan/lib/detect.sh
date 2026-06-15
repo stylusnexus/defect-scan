@@ -12,6 +12,24 @@ eval_corpus_root() {
   printf '%s\n' "${DEFECT_SCAN_EVAL_CORPUS:-$(skill_dir)/../../tests/eval}"
 }
 
+# extract_eval_block: read runner output on stdin; emit the validated findings of the
+# single <<<EVAL ... EVAL>>> block to stdout (possibly empty). Exit 4 = PROTOCOL ERROR:
+# zero blocks, more than one block, or any malformed line. The missing(=4) vs
+# empty(=0, no output) distinction is load-bearing — a missing block on a clean fixture
+# must NOT score as a perfect run.
+extract_eval_block() {
+  in="$(cat)"
+  nstart=$(printf '%s\n' "$in" | grep -c '^<<<EVAL$' 2>/dev/null || true)
+  nend=$(printf '%s\n' "$in" | grep -c '^EVAL>>>$' 2>/dev/null || true)
+  [ "$nstart" = "1" ] && [ "$nend" = "1" ] || return 4
+  body=$(printf '%s\n' "$in" | sed -n '/^<<<EVAL$/,/^EVAL>>>$/p' | sed '1d;$d')
+  # every non-empty body line must be <path>:<line>:<category>
+  bad=$(printf '%s\n' "$body" | grep -vE '^$|^[^:]+:[0-9]+:[^:]+$' | grep -c . 2>/dev/null || true)
+  [ "$bad" = "0" ] || return 4
+  # print non-empty lines only (empty block => no output)
+  printf '%s\n' "$body" | grep -v '^$' || true
+}
+
 # fm_get <file> <key>: print the frontmatter value for <key>. Frontmatter is the
 # block between the first two '---' lines. Lists (comma/space) → space-separated.
 # Trailing '# comment' is stripped. Prints nothing if absent / no frontmatter.
@@ -440,6 +458,7 @@ main() {
     patterns)  cmd_patterns "$@" ;;
     __fmget)   fm_get "$@" ;;
     __fmfield) fm_field "$@" ;;
+    __evalblock) extract_eval_block ;;
     *) echo "usage: detect.sh {preflight|eval|codex-verify|stacks|tool|scope|triage|issues|issues-create|issues-ensure-label|labels|profiles|patterns} ..." >&2; return 2 ;;
   esac
 }

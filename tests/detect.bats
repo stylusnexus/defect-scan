@@ -119,6 +119,33 @@ setup() {
   [[ "$output" == *"eval"* ]]
 }
 
+@test "extract_eval_block: one valid block returns its lines (exit 0)" {
+  run sh -c 'printf "noise\n<<<EVAL\na.py:4:cat#2\nb.py:5:cat#3\nEVAL>>>\nmore\n" | "$0" __evalblock' "$DETECT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"a.py:4:cat#2"* ]] && [[ "$output" == *"b.py:5:cat#3"* ]]
+}
+
+@test "extract_eval_block: present-but-empty block is OK (exit 0, no output)" {
+  run sh -c 'printf "<<<EVAL\nEVAL>>>\n" | "$0" __evalblock' "$DETECT"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "extract_eval_block: MISSING block is a protocol error (exit 4)" {
+  run sh -c 'printf "just a report, no block\n" | "$0" __evalblock' "$DETECT"
+  [ "$status" -eq 4 ]
+}
+
+@test "extract_eval_block: duplicate blocks are a protocol error (exit 4)" {
+  run sh -c 'printf "<<<EVAL\nEVAL>>>\n<<<EVAL\nEVAL>>>\n" | "$0" __evalblock' "$DETECT"
+  [ "$status" -eq 4 ]
+}
+
+@test "extract_eval_block: malformed line is a protocol error (exit 4)" {
+  run sh -c 'printf "<<<EVAL\nnot-valid\nEVAL>>>\n" | "$0" __evalblock' "$DETECT"
+  [ "$status" -eq 4 ]
+}
+
 @test "eval-categories: baseline cats unioned with corpus-specific labels" {
   run "$DETECT" eval-categories rust
   [ "$status" -eq 0 ]
