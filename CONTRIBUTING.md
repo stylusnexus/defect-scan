@@ -68,6 +68,16 @@ Copy the template and fill it in:
 cp skills/scan/profiles/TEMPLATE.md.example skills/scan/profiles/ruby.md
 ```
 
+> Keep the source template named `TEMPLATE.md.example` — the `.example` suffix is why
+> `detect.sh` (which globs `*.md`) never loads it as a real profile. Your copy is the
+> real `<name>.md`.
+
+**Built-ins must be generic.** A contributed built-in profile or pattern has to be
+useful to *everyone* — no product-, company-, or codebase-specific detail (exact
+routes, internal field names, one app's known incidents). Product/org-specific
+detections belong in that repo's **project layer** (`.defect-scan/profiles|patterns/`),
+never in the public built-ins. See the layers table in [`README.md`](./README.md).
+
 Every built-in profile **must** declare valid frontmatter (`name`, plus
 `detect_files` and/or `extensions`, and `tools`) and the four sections **in this
 order**: `## Detection`, `## Toolchain`, `## Reasoning checklist`, `## Auto-fix-safe`.
@@ -175,10 +185,23 @@ the change is user-visible (e.g. a newly recommended analyzer).
 
 ## Contributing defect patterns
 
-Recurring, cross-language defect patterns live in `skills/scan/patterns/recurring.md`
-(P1–P10). To add one, follow the existing `## P<N>` format and add it to the
-`P1 P2 …` assertion list in `tests/detect.bats`. Org- or repo-specific patterns
-belong in a drop-in pattern pack instead (see EXTENDING.md) — not in the built-ins.
+Recurring, cross-cutting defect patterns live in `skills/scan/patterns/recurring.md`
+(P1–P10). To add one, follow the existing `## P<N>` format, give it a **default
+severity** (add it to the severity table at the top), and add it to the `P1 P2 …`
+assertion list in `tests/detect.bats`.
+
+**Litmus — does it belong here, in a profile, or in a project pack?**
+- **Here (`recurring.md`)** only if it's **language-agnostic** — the same defect
+  *concept* could recur in ≥2 unrelated languages (charge/refund ordering, authz on
+  output, injection-into-a-sink). Defined by semantics, not syntax.
+- **In a language profile's checklist** if it keys on a specific language's construct,
+  idiom, or API (`except:`, `key={index}`, an unchecked Go `err`). Map it to a `cat#`
+  and *cite* the relevant `P#` rather than re-explaining the concept.
+- **In a project pattern pack** (`.defect-scan/patterns/`, see EXTENDING.md) if it's
+  org-/product-specific (your billing rules, routes, field names) — never in built-ins.
+
+Severity is a *suggested default* (how bad if real), independent of confidence tier;
+the authoritative priority policy is a project decision (see `baseline-categories.md`).
 
 ## The eval corpus (measuring scan quality)
 
