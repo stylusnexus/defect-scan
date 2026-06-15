@@ -317,7 +317,7 @@ setup() {
 }
 
 @test "every profile declares the four required sections in order" {
-  for p in generic python react-typescript dart ruby go csharp; do
+  for p in generic python react-typescript dart ruby go csharp java; do
     f="$BATS_TEST_DIRNAME/../skills/scan/profiles/$p.md"
     [ -f "$f" ]
     grep -qE '^## Detection'           "$f"
@@ -656,6 +656,28 @@ setup() {
   [[ "$output" == *"recall=1.00"* ]]
 }
 
+@test "stacks: detects java from pom.xml" {
+  run "$DETECT" stacks "$BATS_TEST_DIRNAME/fixtures/java"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"java"* ]]
+}
+
+@test "eval: java corpus scores a clean run 1.0 and has a near-miss" {
+  corpus="$BATS_TEST_DIRNAME/eval/java/seen"
+  [ -s "$corpus/BugEmptyCatch.java.expected" ]
+  [ -f "$corpus/CleanLoggedRethrow.java.expected" ] && [ ! -s "$corpus/CleanLoggedRethrow.java.expected" ]
+  f="$BATS_TEST_TMPDIR/java"
+  {
+    echo "BugEmptyCatch.java:4:cat#2"
+    echo "BugSqlInjection.java:5:cat#3"
+    echo "BugResourceLeak.java:4:cat#4"
+  } > "$f"
+  run "$DETECT" eval "$corpus" "$f"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"precision=1.00"* ]]
+  [[ "$output" == *"recall=1.00"* ]]
+}
+
 @test "triage: ranks .dart files (source-filter includes dart)" {
   repo="$BATS_TEST_TMPDIR/dartrepo"
   mkdir -p "$repo" && cd "$repo" && git init -q
@@ -704,6 +726,9 @@ setup() {
   [ "$("$DETECT" __fmget "$P/csharp.md" name)" = "csharp" ]
   [[ "$("$DETECT" __fmget "$P/csharp.md" extensions)" == *"cs"* ]]
   [[ "$("$DETECT" __fmget "$P/csharp.md" detect_files)" == *"global.json"* ]]
+  [ "$("$DETECT" __fmget "$P/java.md" name)" = "java" ]
+  [[ "$("$DETECT" __fmget "$P/java.md" extensions)" == *"java"* ]]
+  [[ "$("$DETECT" __fmget "$P/java.md" detect_files)" == *"pom.xml"* ]]
 }
 
 @test "profiles: lists built-ins with origin=builtin" {
