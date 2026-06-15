@@ -317,7 +317,7 @@ setup() {
 }
 
 @test "every profile declares the four required sections in order" {
-  for p in generic python react-typescript dart ruby go csharp java yaml; do
+  for p in generic python react-typescript dart ruby go csharp java yaml rust; do
     f="$BATS_TEST_DIRNAME/../skills/scan/profiles/$p.md"
     [ -f "$f" ]
     grep -qE '^## Detection'           "$f"
@@ -700,6 +700,28 @@ setup() {
   [[ "$output" == *"recall=1.00"* ]]
 }
 
+@test "stacks: detects rust from Cargo.toml" {
+  run "$DETECT" stacks "$BATS_TEST_DIRNAME/fixtures/rust"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"rust"* ]]
+}
+
+@test "eval: rust corpus scores a clean run 1.0 and has a near-miss" {
+  corpus="$BATS_TEST_DIRNAME/eval/rust/seen"
+  [ -s "$corpus/bug_unwrap.rs.expected" ]
+  [ -f "$corpus/clean_get_index.rs.expected" ] && [ ! -s "$corpus/clean_get_index.rs.expected" ]
+  f="$BATS_TEST_TMPDIR/rs"
+  {
+    echo "bug_unwrap.rs:3:panic"
+    echo "bug_sql_injection.rs:2:cat#3"
+    echo "bug_indexing.rs:2:cat#1"
+  } > "$f"
+  run "$DETECT" eval "$corpus" "$f"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"precision=1.00"* ]]
+  [[ "$output" == *"recall=1.00"* ]]
+}
+
 @test "triage: ranks .dart files (source-filter includes dart)" {
   repo="$BATS_TEST_TMPDIR/dartrepo"
   mkdir -p "$repo" && cd "$repo" && git init -q
@@ -753,6 +775,9 @@ setup() {
   [[ "$("$DETECT" __fmget "$P/java.md" detect_files)" == *"pom.xml"* ]]
   [ "$("$DETECT" __fmget "$P/yaml.md" name)" = "yaml" ]
   [[ "$("$DETECT" __fmget "$P/yaml.md" extensions)" == *"yaml"* ]]   # detect_files intentionally empty
+  [ "$("$DETECT" __fmget "$P/rust.md" name)" = "rust" ]
+  [[ "$("$DETECT" __fmget "$P/rust.md" extensions)" == *"rs"* ]]
+  [[ "$("$DETECT" __fmget "$P/rust.md" detect_files)" == *"Cargo.toml"* ]]
 }
 
 @test "profiles: lists built-ins with origin=builtin" {
