@@ -32,6 +32,19 @@ The repo is `stylusnexus/agent-plugins`; the marketplace **name** is `stylus-nex
 ## Help
 `/defect-scan:help` prints usage, flags, and what it uses.
 
+## Codex
+defect-scan also runs under the [Codex CLI](https://github.com/openai/codex) — the
+scan logic, profiles, and patterns are shared; only the entrypoint differs. See
+[`codex/README.md`](./codex/README.md) to install the Codex prompt.
+
+## Supported platforms
+The engine is one POSIX-sh library, so it runs on **macOS** (BSD userland), **Linux**
+(GNU userland), and **Windows via WSL or Git-Bash**. CI runs the suite on both Ubuntu
+and macOS to catch BSD-vs-GNU regressions. **Native PowerShell** users get a fallback
+shim (`windows/defect-scan.ps1`) that delegates to the bash bundled with Git for
+Windows — see [`windows/README.md`](./windows/README.md). Check your environment with
+`detect.sh preflight` (verifies git/awk/sed/grep/jq… are present).
+
 ## Optional analyzers (richer coverage, all degrade-gracefully)
 The scan runs whatever's installed and skips the rest with an install hint:
 - **`semgrep`** — multi-language taint (injection, subprocess, SQL) — highest-value add
@@ -52,6 +65,25 @@ Add a language or custom defect rules by dropping files in `.defect-scan/` (team
 or `~/.config/defect-scan/` (personal) — no core changes. Copy
 `skills/scan/profiles/TEMPLATE.md.example`, fill four frontmatter fields, done.
 **Full step-by-step guide: [`EXTENDING.md`](./EXTENDING.md).**
+
+### Three layers — and what belongs where
+Both **profiles** (languages) and **patterns** (cross-cutting defect classes) resolve
+across three layers, low→high precedence; higher layers shadow lower **by name**:
+
+| Layer | Profiles | Patterns | What belongs here |
+|-------|----------|----------|-------------------|
+| **Built-in (global)** | `skills/scan/profiles/` | `skills/scan/patterns/recurring.md` | **Generic** detections useful to *everyone* — no product/org/customer specifics. This is a public, shared plugin. |
+| **User** (`~/.config/defect-scan/`) | `profiles/*.md` | `patterns/*.md` | Your personal rules across all your repos. |
+| **Project** (`<repo>/.defect-scan/`) | `profiles/*.md` | `patterns/*.md` | **Product/org-specific** detections — your billing rules, your naming conventions, your internal APIs. Committed with the repo, scoped to it. |
+
+The dividing line: **built-ins stay generic; anything specific to one product, codebase,
+or company goes in that repo's project layer.** Example — the built-in P1 "metered-action
+correctness" pattern is generic billing-integrity; a specific product's billing
+manifestations (exact routes, field names, known incidents) belong in *its*
+`.defect-scan/patterns/`, not here. `lib/detect.sh profiles <repo>` and `… patterns <repo>`
+show every layer's contributions with their origin (`builtin`/`user`/`project`); set
+`DEFECT_SCAN_NO_USER=1` / `DEFECT_SCAN_NO_PROJECT=1` (the `--no-user-profiles` /
+`--no-project-profiles` scan flags) to restrict to built-ins only.
 
 ## Local dev
 `./install.sh` symlinks `skills/scan/` into `~/.claude/skills/defect-scan` so it

@@ -10,6 +10,157 @@ setup() {
   [[ "$output" == *"usage:"* ]]
 }
 
+@test "preflight: passes when core tools are present (lists usage)" {
+  run "$DETECT" preflight
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"OK"* ]]
+}
+
+@test "preflight: fails with a clear message when a core tool is missing" {
+  # Simulate an unsupported environment: a PATH with none of the core tools.
+  # Invoke sh by absolute path so `env` can still find the shell; only the in-script
+  # `command -v <tool>` lookups fail (empty PATH).
+  empty="$BATS_TEST_TMPDIR/emptybin"; mkdir -p "$empty"
+  run env PATH="$empty" /bin/sh "$DETECT" preflight
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"MISSING core tools"* ]]
+  [[ "$output" == *"WSL or Git-Bash"* ]]
+}
+
+@test "usage lists the preflight subcommand" {
+  run "$DETECT" bogus
+  [[ "$output" == *"preflight"* ]]
+}
+
+@test "eval: a clean run (all expected bugs, no FPs) scores precision 1, recall 1" {
+  corpus="$BATS_TEST_DIRNAME/eval/python/seen"
+  f="$BATS_TEST_TMPDIR/good"
+  {
+    echo "bug_bare_except.py:5:cat#2"
+    echo "bug_resource_leak.py:2:cat#4"
+    echo "bug_mutable_default.py:1:cat#5"
+  } > "$f"
+  run "$DETECT" eval "$corpus" "$f"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"precision=1.00"* ]]
+  [[ "$output" == *"recall=1.00"* ]]
+  [[ "$output" == *"fp=0"* ]]
+}
+
+@test "eval: a finding on a clean fixture is a false positive (precision drops)" {
+  corpus="$BATS_TEST_DIRNAME/eval/python/seen"
+  f="$BATS_TEST_TMPDIR/noisy"
+  {
+    echo "bug_bare_except.py:5:cat#2"
+    echo "bug_resource_leak.py:2:cat#4"
+    echo "bug_mutable_default.py:1:cat#5"
+    echo "clean_near_miss_except.py:5:cat#2"   # the tripwire: FP on a clean near-miss
+  } > "$f"
+  run "$DETECT" eval "$corpus" "$f"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"fp=1"* ]]
+  [[ "$output" != *"precision=1.00"* ]]        # noise must NOT score as perfect
+}
+
+@test "eval: a missed expected bug is a false negative (recall drops)" {
+  corpus="$BATS_TEST_DIRNAME/eval/python/seen"
+  f="$BATS_TEST_TMPDIR/missed"
+  {
+    echo "bug_bare_except.py:5:cat#2"
+    echo "bug_resource_leak.py:2:cat#4"
+  } > "$f"                                       # omits the mutable-default bug
+  run "$DETECT" eval "$corpus" "$f"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"fn=1"* ]]
+  [[ "$output" != *"recall=1.00"* ]]
+}
+
+@test "eval: corpus has buggy + clean fixtures incl. a near-miss (FP tripwire)" {
+  d="$BATS_TEST_DIRNAME/eval/python/seen"
+  [ -s "$d/bug_bare_except.py.expected" ]        # buggy: non-empty sidecar
+  [ -f "$d/clean_contextmanager.py.expected" ] && [ ! -s "$d/clean_contextmanager.py.expected" ]  # clean: empty
+  [ -f "$d/clean_near_miss_except.py" ]          # near-miss present
+}
+
+@test "eval: react-typescript corpus scores a clean run 1.0 and has a near-miss" {
+  corpus="$BATS_TEST_DIRNAME/eval/react-typescript/seen"
+  [ -s "$corpus/bug_floating_promise.ts.expected" ]                 # buggy: non-empty
+  [ -f "$corpus/clean_validated_json.ts.expected" ] && [ ! -s "$corpus/clean_validated_json.ts.expected" ]  # near-miss clean: empty
+  f="$BATS_TEST_TMPDIR/rts"
+  {
+    echo "bug_floating_promise.ts:6:cat#2"
+    echo "bug_index_key.tsx:5:cat#5"
+    echo "bug_unvalidated_json.ts:4:cat#1"
+  } > "$f"
+  run "$DETECT" eval "$corpus" "$f"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"precision=1.00"* ]]
+  [[ "$output" == *"recall=1.00"* ]]
+}
+
+@test "eval: counts a final finding that has no trailing newline (no silent drop)" {
+  corpus="$BATS_TEST_DIRNAME/eval/python/seen"
+  f="$BATS_TEST_TMPDIR/nonl"
+  # Two findings, NO trailing newline on the last line.
+  printf 'bug_bare_except.py:5:cat#2\nbug_resource_leak.py:2:cat#4' > "$f"
+  run "$DETECT" eval "$corpus" "$f"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"tp=2"* ]]        # both counted, last line not dropped
+}
+
+@test "eval: errors clearly on a missing corpus dir or findings file" {
+  run "$DETECT" eval "/no/such/corpus" "/no/such/findings"
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"not found"* ]]
+}
+
+@test "usage lists the eval subcommand" {
+  run "$DETECT" bogus
+  [[ "$output" == *"eval"* ]]
+}
+
+@test "codex-verify: requires a prompt file" {
+  run "$DETECT" codex-verify
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"usage:"* ]]
+}
+
+@test "codex-verify: returns the second model's verdict (read-only, via stub)" {
+  export DEFECT_SCAN_CODEX="$BATS_TEST_DIRNAME/fixtures/codex-stub/codex"
+  pf="$BATS_TEST_TMPDIR/prompt"; printf 'Refute this finding. real or not?\n' > "$pf"
+  run "$DETECT" codex-verify "$pf"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"VERDICT:"* ]]
+}
+
+@test "codex-verify: degrades cleanly (exit 3) when codex is unavailable" {
+  export DEFECT_SCAN_CODEX="/nonexistent/codex-xyz"
+  pf="$BATS_TEST_TMPDIR/prompt2"; echo "x" > "$pf"
+  run "$DETECT" codex-verify "$pf"
+  [ "$status" -eq 3 ]
+  [[ "$output" == *"codex not available"* ]]
+}
+
+@test "codex-verify: errors (exit 2) when the prompt file is missing" {
+  export DEFECT_SCAN_CODEX="$BATS_TEST_DIRNAME/fixtures/codex-stub/codex"
+  run "$DETECT" codex-verify "/no/such/prompt"
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"not found"* ]]
+}
+
+@test "usage lists the codex-verify subcommand" {
+  run "$DETECT" bogus
+  [[ "$output" == *"codex-verify"* ]]
+}
+
+@test "windows fallback: PowerShell shim exists and delegates to the shared engine" {
+  f="$BATS_TEST_DIRNAME/../windows/defect-scan.ps1"
+  [ -f "$f" ]
+  grep -q "detect.sh" "$f"          # delegates to the one engine, no reimplementation
+  grep -qi "bash" "$f"              # locates a POSIX shell
+  [ -f "$BATS_TEST_DIRNAME/../windows/README.md" ]
+}
+
 @test "stacks: detects react-typescript from package.json + tsconfig" {
   run "$DETECT" stacks "$BATS_TEST_DIRNAME/fixtures/react-ts"
   [ "$status" -eq 0 ]
@@ -166,7 +317,7 @@ setup() {
 }
 
 @test "every profile declares the four required sections in order" {
-  for p in generic python react-typescript dart; do
+  for p in generic python react-typescript dart ruby; do
     f="$BATS_TEST_DIRNAME/../skills/scan/profiles/$p.md"
     [ -f "$f" ]
     grep -qE '^## Detection'           "$f"
@@ -191,6 +342,18 @@ setup() {
   grep -q "Stage 4 — Report" "$f"
   grep -qi "Refuse if the working tree is dirty" "$f"
   grep -qi "adversarial verification" "$f"
+}
+
+@test "codex port: entrypoint drives the shared pipeline (delegates to SKILL.md, runs detect.sh)" {
+  f="$BATS_TEST_DIRNAME/../codex/defect-scan.md"
+  [ -f "$f" ]
+  grep -q "DEFECT_SCAN_HOME" "$f"          # locates the shared install
+  grep -q "detect.sh" "$f"                 # reuses the shared plumbing
+  grep -q "SKILL.md" "$f"                  # canonical spec is the source of truth
+  grep -qi "origin-gate" "$f"              # preserves the P4 safety invariant
+  grep -qi "report-only" "$f"              # preserves the report-only default
+  [ -f "$BATS_TEST_DIRNAME/../codex/README.md" ]   # install/usage doc
+  [ -f "$BATS_TEST_DIRNAME/../AGENTS.md" ]          # Codex contributor guide
 }
 
 @test "ruff flags the planted bare-except in the python fixture" {
@@ -427,6 +590,28 @@ setup() {
   [[ "$output" == *"dart"* ]]
 }
 
+@test "stacks: detects ruby from Gemfile" {
+  run "$DETECT" stacks "$BATS_TEST_DIRNAME/fixtures/ruby"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"ruby"* ]]
+}
+
+@test "eval: ruby corpus scores a clean run 1.0 and has a near-miss" {
+  corpus="$BATS_TEST_DIRNAME/eval/ruby/seen"
+  [ -s "$corpus/bug_bare_rescue.rb.expected" ]
+  [ -f "$corpus/clean_rescue_reraise.rb.expected" ] && [ ! -s "$corpus/clean_rescue_reraise.rb.expected" ]
+  f="$BATS_TEST_TMPDIR/rb"
+  {
+    echo "bug_bare_rescue.rb:3:cat#2"
+    echo "bug_sql_injection.rb:3:cat#3"
+    echo "bug_resource_leak.rb:2:cat#4"
+  } > "$f"
+  run "$DETECT" eval "$corpus" "$f"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"precision=1.00"* ]]
+  [[ "$output" == *"recall=1.00"* ]]
+}
+
 @test "triage: ranks .dart files (source-filter includes dart)" {
   repo="$BATS_TEST_TMPDIR/dartrepo"
   mkdir -p "$repo" && cd "$repo" && git init -q
@@ -466,6 +651,9 @@ setup() {
   [[ "$("$DETECT" __fmget "$P/react-typescript.md" extensions)" == *"tsx"* ]]
   [ "$("$DETECT" __fmget "$P/dart.md" name)" = "dart" ]
   [[ "$("$DETECT" __fmget "$P/dart.md" detect_files)" == *"pubspec.yaml"* ]]
+  [ "$("$DETECT" __fmget "$P/ruby.md" name)" = "ruby" ]
+  [[ "$("$DETECT" __fmget "$P/ruby.md" extensions)" == *"rb"* ]]
+  [[ "$("$DETECT" __fmget "$P/ruby.md" detect_files)" == *"Gemfile"* ]]
 }
 
 @test "profiles: lists built-ins with origin=builtin" {

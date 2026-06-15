@@ -68,6 +68,16 @@ Copy the template and fill it in:
 cp skills/scan/profiles/TEMPLATE.md.example skills/scan/profiles/ruby.md
 ```
 
+> Keep the source template named `TEMPLATE.md.example` — the `.example` suffix is why
+> `detect.sh` (which globs `*.md`) never loads it as a real profile. Your copy is the
+> real `<name>.md`.
+
+**Built-ins must be generic.** A contributed built-in profile or pattern has to be
+useful to *everyone* — no product-, company-, or codebase-specific detail (exact
+routes, internal field names, one app's known incidents). Product/org-specific
+detections belong in that repo's **project layer** (`.defect-scan/profiles|patterns/`),
+never in the public built-ins. See the layers table in [`README.md`](./README.md).
+
 Every built-in profile **must** declare valid frontmatter (`name`, plus
 `detect_files` and/or `extensions`, and `tools`) and the four sections **in this
 order**: `## Detection`, `## Toolchain`, `## Reasoning checklist`, `## Auto-fix-safe`.
@@ -113,7 +123,7 @@ signal (e.g. `tests/fixtures/ruby/Gemfile`) and a small source file. Look at
 The suite hardcodes the built-in profile list in a few places — update **all** of
 them in `tests/detect.bats` (search for `dart` to find them quickly):
 
-- the **four-sections** test — add your name to `for p in generic python react-typescript dart`
+- the **four-sections** test — add your name to the `for p in generic python react-typescript dart ruby …` list
 - the **frontmatter** test — add an assertion for your profile's `name`/signals
 - add a **detection** test for your fixture, e.g.:
   ```bash
@@ -175,10 +185,40 @@ the change is user-visible (e.g. a newly recommended analyzer).
 
 ## Contributing defect patterns
 
-Recurring, cross-language defect patterns live in `skills/scan/patterns/recurring.md`
-(P1–P10). To add one, follow the existing `## P<N>` format and add it to the
-`P1 P2 …` assertion list in `tests/detect.bats`. Org- or repo-specific patterns
-belong in a drop-in pattern pack instead (see EXTENDING.md) — not in the built-ins.
+Recurring, cross-cutting defect patterns live in `skills/scan/patterns/recurring.md`
+(P1–P10). To add one, follow the existing `## P<N>` format, give it a **default
+severity** (add it to the severity table at the top), and add it to the `P1 P2 …`
+assertion list in `tests/detect.bats`.
+
+**Litmus — does it belong here, in a profile, or in a project pack?**
+- **Here (`recurring.md`)** only if it's **language-agnostic** — the same defect
+  *concept* could recur in ≥2 unrelated languages (charge/refund ordering, authz on
+  output, injection-into-a-sink). Defined by semantics, not syntax.
+- **In a language profile's checklist** if it keys on a specific language's construct,
+  idiom, or API (`except:`, `key={index}`, an unchecked Go `err`). Map it to a `cat#`
+  and *cite* the relevant `P#` rather than re-explaining the concept.
+- **In a project pattern pack** (`.defect-scan/patterns/`, see EXTENDING.md) if it's
+  org-/product-specific (your billing rules, routes, field names) — never in built-ins.
+
+Severity is a *suggested default* (how bad if real), independent of confidence tier;
+the authoritative priority policy is a project decision (see `baseline-categories.md`).
+
+## The eval corpus (measuring scan quality)
+
+`tests/eval/<lang>/` is a labeled fixture corpus that measures whether a profile or
+pattern change makes the scanner better or just noisier. The grader is model-free:
+
+```sh
+detect.sh eval tests/eval/python/seen <findings-file>   # → precision/recall/tp/fp/fn
+```
+
+When you sharpen a profile, add a fixture that captures the case — a buggy file with a
+`<line>:<category>` `.expected` sidecar, or a **clean** file with an empty sidecar (a
+false-positive tripwire; include near-miss clean fixtures). When a real bug escapes,
+add a **synthetic, minimized** reproduction (never proprietary code or secrets — this
+is a public repo). The grader and corpus are CODEOWNERS-protected so a PR can't
+silently weaken them. Full detail: [`tests/eval/README.md`](./tests/eval/README.md)
+and issue #15.
 
 ## Pull requests
 

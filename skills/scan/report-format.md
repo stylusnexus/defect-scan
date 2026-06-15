@@ -1,5 +1,15 @@
 # Report Format & Confidence Tiers
 
+Findings carry **two independent axes** — never collapse them:
+- **Confidence tier** (`High/Medium/Low`) — *how sure we are it's real*.
+- **Severity** (`High/Medium/Low`) — *how bad it is if real*. The default comes from
+  the finding's category (`baseline-categories.md`) or pattern (`recurring.md`);
+  context can adjust it, and a project's `.defect-scan/` policy overrides it. Severity
+  is what `--file-issues` maps to a priority label (P0/P1/P2).
+
+So a finding can be e.g. High-confidence/Low-severity (real but cosmetic) or
+Low-confidence/High-severity (uncertain but scary) — both are meaningful and distinct.
+
 ## Confidence tiers
 - **High** — tool-confirmed (an analyzer flagged it with a named rule) OR a
   reasoning finding that survived adversarial verification with a clear repro
@@ -31,3 +41,7 @@ NEW when you couldn't check the tracker.
 `VERIFY REGRESSION #N` (closed match), or `FILED #N` (just filed this run via
 `--file-issues`). Sorted High→Low, then by severity. Low tier goes under a
 `<details>`-style "Low-confidence appendix" heading.
+
+When `--cross-model` ran, a finding may also carry **cross-model ✓** (a second model
+confirmed it) or **cross-model ✗** (the second model refuted it → downgraded). The
+header notes that cross-model verification ran and against which model.

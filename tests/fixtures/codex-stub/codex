@@ -1,0 +1,19 @@
+#!/usr/bin/env sh
+# Minimal `codex` stub for offline cross-model tests. Emulates
+# `codex exec --sandbox read-only --skip-git-repo-check -o <file> -` by writing a
+# canned verdict to the file named after `-o` (real codex with -o writes its final
+# message there). Ignores the piped prompt on stdin.
+out=""
+prev=""
+for a in "$@"; do
+  [ "$prev" = "-o" ] && out="$a"
+  prev="$a"
+done
+cat >/dev/null 2>&1 || true   # drain stdin prompt
+verdict="VERDICT: real — confirmed by second model; clear repro path. (codex-stub)"
+if [ -n "$out" ]; then
+  printf '%s\n' "$verdict" > "$out"
+else
+  printf '%s\n' "$verdict"
+fi
+exit 0

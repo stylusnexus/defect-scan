@@ -17,8 +17,10 @@ Language-aware defect hunter. Pipeline: **detect → triage → tool pass → re
 - `--depth N` — deep-reason the top N triaged source files (default 20)
 - `--fix` — apply the high-confidence, tool-confirmed tier (re-verified)
 - `--fix-all` — also apply the medium tier (with confirmation)
-- `--lang <profile>` — force a profile (react-typescript | python | generic)
+- `--lang <profile>` — force a profile (react-typescript | python | ruby | dart | generic)
 - `--no-correlate` — skip GitHub-issue correlation (on by default when `gh` is present)
+- `--cross-model` — verify reasoning findings through a second model (Codex, read-only)
+  for a different-model second opinion; needs `codex` installed
 - `--file-issues[=medium]` — file a GitHub issue per NEW finding (High only by default;
   `=medium` includes Medium). Write action: needs `gh` auth, dedupes against existing
   issues (requires correlation), reuses the repo's existing defect + priority labels
@@ -40,6 +42,10 @@ Language-aware defect hunter. Pipeline: **detect → triage → tool pass → re
 ## Optional pre-commit advisory (off by default)
 Set `DEFECT_SCAN_HOOK=1` to get a one-line, non-blocking advisory on changed files
 when committing. Run `/defect-scan:scan` for the full report.
+
+## Platforms
+macOS, Linux, and Windows (WSL/Git-Bash). Native PowerShell: use
+`windows/defect-scan.ps1`. Verify tooling with `detect.sh preflight`.
 
 ## Not the right tool when…
 - Debugging a *known* bug → use `systematic-debugging`.
