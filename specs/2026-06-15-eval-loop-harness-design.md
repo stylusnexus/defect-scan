@@ -140,11 +140,13 @@ model**; the **runner is the only model-bearing part** and lives *outside* `lib/
   `overfit_band` (max acceptable seen-vs-held-out mean-precision gap).
 - Under `/tests/eval/` → CODEOWNERS-protected; floors/baselines move only via PR.
 
-### 2.5 Run artifact (`tests/eval/<lang>/.last-run.<split>.json`)
-- Deterministic record `eval-run` writes (Codex F4): per-run metrics, aggregated
-  mean±stddev, clean-FP rate, and **per-category** tp/fp/fn (derived by the model-free
-  scorer over the category registry). **Gitignored** (a transient local artifact, not
-  ground truth). It is the sole input `eval-gaps` reads — no prose parsing.
+### 2.5 Run artifact (`tests/eval/<lang>/.last-run.<split>.txt`)
+- Deterministic record `eval-run` writes (Codex F4): aggregated mean±stddev, clean-FP
+  rate, and the last run's accumulated findings (so `eval-gaps` can derive per-category
+  recall over the category registry). **Flat key=value + a `@findings` section** — *not*
+  JSON, so it is read/written by model-free `sh` without the optional `jq` dependency.
+  **Gitignored** (a transient local artifact, not ground truth). It is the sole input
+  `eval-gaps` reads — no prose parsing.
 
 ### 2.6 Category registry (`detect.sh eval-categories <lang>`, model-free)
 - Resolves the authoritative valid-label set for a language (Codex F3): the baseline
@@ -194,8 +196,11 @@ Per split, on the aggregated metrics:
 - **Recall — soft.** `mean_recall < recall_floor` → **WARN**, not FAIL (a miss is
   cheaper than a false alarm).
 - **Overfitting (only under `--split all`).** Score `seen` and `held-out` separately
-  against their own baselines; if `seen_mean_precision − heldout_mean_precision >
-  overfit_band` → **FLAG**.
+  against their own baselines; FLAG if the seen-vs-held-out gap in **either** metric
+  exceeds `overfit_band` (`seen_mean_precision − heldout_mean_precision > overfit_band`
+  **or** `seen_mean_recall − heldout_mean_recall > overfit_band`). Precision alone
+  misses the common case — a profile memorized to the seen set drops held-out *recall*,
+  while zero held-out findings score a vacuous precision = 1.00.
 - **Severity → exit:** FAIL → nonzero exit; WARN/FLAG/PASS → exit 0 but printed
   distinctly. (FLAG = "look now," not "block.")
 - **Baseline only moves via a CODEOWNERS PR** (`--update-baseline` writes; a human
@@ -284,7 +289,7 @@ out of graded ground truth without a human author + reviewed merge.
   exists) — new per language.
 - `tests/eval/<lang>/held-out/*` — new (incremental).
 - `tests/eval/_proposals/.gitkeep` — staging dir the grader ignores.
-- `.gitignore` — ignore `tests/eval/*/.last-run.*.json`.
+- `.gitignore` — ignore `tests/eval/*/.last-run.*`.
 - shared eval-mode prompt snippet + references in `SKILL.md` and the Codex driver.
 - `tests/fixtures/eval-runner-stub` — new.
 - `tests/detect.bats` — new harness tests; update profile/corpus-list assertions.
