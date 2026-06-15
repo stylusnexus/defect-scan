@@ -1,0 +1,45 @@
+# defect-scan gitleaks baseline — cuts the false-positive firehose.
+#
+# Pass with: gitleaks git --report-format json -c <this file>
+# `extend.useDefault = true` keeps gitleaks' built-in rules; the allowlist below removes
+# the noise that made a raw scan unusable (issue #20: 8522 findings, 100% FP on a real
+# repo — public demo JWTs + gitignored/vendored files).
+#
+# This is a STARTING baseline. A scanned repo can extend it with its own
+# `.gitleaks.toml` (and gitleaks honors a repo-local `.gitleaksignore` of fingerprints).
+
+title = "defect-scan baseline"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Paths and well-known public/demo keys that are not real secrets."
+
+# ONLY vendored / generated / build output — never first-class source. Deliberately NOT
+# allowlisting examples//fixtures/ or .env.local|dev|test: real `examples/` demo apps
+# and committed dev env files are well-known leak vectors, so a real secret there MUST
+# still fire (demo/placeholder noise is handled by the value-level regexes below, which
+# match the secret VALUE, not the path).
+paths = [
+  '''(^|/)node_modules/''',
+  '''(^|/)vendor/''',
+  '''(^|/)(dist|build|out|\.next|\.nuxt|coverage|target)/''',
+  '''(^|/)\.venv/''',
+  # Only placeholder-by-design env templates — NOT .env.local/.env.dev/.env.test.
+  '''\.env\.(example|sample)(\..*)?$''',
+]
+
+# Well-known PUBLIC keys that ship in docs/CI/demos and are not secrets. gitleaks
+# matches these against the secret VALUE (default regexTarget), so a real secret on a
+# line that merely mentions one of these words is still flagged.
+regexes = [
+  # Supabase demo/local JWTs: the payload always begins {"iss":"supabase-demo"...,
+  # which base64url-encodes to the stable prefix below for BOTH the anon and
+  # service_role demo tokens. Matching this prefix allowlists the published demo keys
+  # WITHOUT suppressing a real, differently-issued committed JWT.
+  '''eyJpc3MiOiJzdXBhYmFzZS1kZW1v''',
+  # Unambiguous placeholder VALUES only — kept tight so they can't match inside a real
+  # secret (dropped bare `example`/`placeholder`/`dummy`, which appear in real values).
+  '''(?i)(your[-_]?(api[-_]?)?(key|token|secret)|changeme|test[-_]?key|xxxx+)''',
+]

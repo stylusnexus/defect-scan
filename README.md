@@ -72,7 +72,9 @@ Windows — see [`windows/README.md`](./windows/README.md). Check your environme
 ## Optional analyzers (richer coverage, all degrade-gracefully)
 The scan runs whatever's installed and skips the rest with an install hint:
 - **`semgrep`** — multi-language taint (injection, subprocess, SQL) — highest-value add
-- **`gitleaks`** — committed secrets
+- **`gitleaks`** — committed secrets (run git-mode with the bundled
+  `skills/scan/gitleaks-baseline.toml`, which allowlists node_modules/build output and
+  well-known public demo keys so the scan isn't drowned in false positives)
 - **`bandit` / `pip-audit`** (Python), **`npm audit` / `osv-scanner`** (JS/TS) — security + vuln deps
 
 One-liner to install them all (best-effort, per your package managers):
