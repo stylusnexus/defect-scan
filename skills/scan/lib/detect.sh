@@ -30,8 +30,8 @@ cmd_stacks() {
   root="${1:?usage: detect.sh stacks <dir>}"
   matched="$("$0" profiles "$root" | while IFS="$(printf '\t')" read -r name _ _; do
     [ "$name" = "generic" ] && continue
-    df="$(fm_field "$name" detect_files "$root")"
-    ext="$(fm_field "$name" extensions "$root")"
+    df="$(fm_field "$name" detect_files "$root" 2>/dev/null || :)"
+    ext="$(fm_field "$name" extensions "$root" 2>/dev/null || :)"
     m=""
     for f in $df;  do [ -e "$root/$f" ] && m=1; done
     for e in $ext; do find "$root" -type f -name "*.$e" 2>/dev/null | head -1 | grep -q . && m=1; done

@@ -363,6 +363,15 @@ setup() {
   [[ "$output" == *"pyx"* ]]
 }
 
+@test "stacks: detects a profile with extensions-only (no detect_files)" {
+  repo="$BATS_TEST_TMPDIR/extonly"; mkdir -p "$repo/.defect-scan/profiles"
+  printf -- '---\nname: zz-lang\nextensions: zz\n---\n' > "$repo/.defect-scan/profiles/zz-lang.md"
+  : > "$repo/thing.zz"
+  run "$DETECT" stacks "$repo"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"zz-lang"* ]]
+}
+
 @test "stacks: zero-core-edit — a project profile teaches a new language" {
   repo="$BATS_TEST_TMPDIR/toml"; mkdir -p "$repo/.defect-scan/profiles"
   printf -- '---\nname: toml-lang\ndetect_files: foo.toml\nextensions: toml\n---\n' \
