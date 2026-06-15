@@ -24,12 +24,16 @@ Optional (deeper, run if installed):
 - `2` → **config/usage error (NOT clean)**. Mark the eslint check **inconclusive**
   in the report; never imply the files passed.
 
-**ESLint 9 flat-config gotcha:** passing explicit file paths can yield
-`No files matching the pattern` when those paths fall outside the flat config's
-`files`/`ignores` scope (this is exit 2, inconclusive — not clean). Fallbacks, in
-order: (1) lint the containing directory instead of individual files; (2) use the
-project's own entry (`npm run lint -- <files>` / `npx eslint <files>`); (3) if
-still exit 2, report eslint inconclusive and rely on the reasoning pass.
+**ESLint 9 flat-config gotcha:** passing explicit file paths to a flat-config
+project commonly breaks — two known exit-2 symptoms: `No files matching the
+pattern` (paths outside the config's `files`/`ignores` scope) **and** a hard
+`Oops! Something went wrong! :( ESLint: <ver>` internal crash. Treat **either** as
+"explicit-paths-unsupported here," not a verdict on the files. **Auto-apply** the
+fallbacks in order before reporting — don't stop at the first exit 2: (1) re-run
+against the containing directory instead of individual files (same scan, not
+inconclusive); (2) use the project's own entry (`npm run lint -- <files>` /
+`npx eslint <files>`); (3) only if all three still exit 2, report eslint
+inconclusive and rely on the reasoning pass.
 
 Install hints: `npm i -D typescript eslint`.
 

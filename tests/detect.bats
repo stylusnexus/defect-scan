@@ -78,6 +78,57 @@ setup() {
   [[ "$output" == *"f.txt"* && "$output" == *"g.txt"* ]]
 }
 
+@test "scope: normal --no-ff feature merge surfaces the merged files (HEAD~1 net effect)" {
+  repo="$BATS_TEST_TMPDIR/mergehead"
+  mkdir -p "$repo" && cd "$repo"
+  git init -qb main
+  echo base > base.txt && git add . && git -c user.email=t@t -c user.name=t commit -qm init
+  git checkout -qb feat
+  echo feature > feature.py && git add . && git -c user.email=t@t -c user.name=t commit -qm feat
+  git checkout -q main
+  git -c user.email=t@t -c user.name=t merge --no-ff -qm "merge feat" feat
+  # Working tree is clean; HEAD is the merge commit.
+  run "$DETECT" scope "" "" "$repo"
+  [ "$status" -eq 0 ]
+  [[ "${lines[0]}" == "MODE=changes" ]]
+  [[ "$output" == *"feature.py"* ]]
+}
+
+@test "scope: no-op back-merge (empty HEAD~1 diff) falls back to the last non-merge commit" {
+  repo="$BATS_TEST_TMPDIR/noopmerge"
+  mkdir -p "$repo" && cd "$repo"
+  git init -qb main
+  D1="2020-01-01T00:00:00"; D2="2020-01-02T00:00:00"
+  GIT_AUTHOR_DATE="$D1" GIT_COMMITTER_DATE="$D1" \
+    git -c user.email=t@t -c user.name=t commit -q --allow-empty -m base
+  echo base > base.txt && git add .
+  GIT_AUTHOR_DATE="$D1" GIT_COMMITTER_DATE="$D1" \
+    git -c user.email=t@t -c user.name=t commit -qm init
+  git checkout -qb feat
+  echo feature > feature.py && git add .
+  GIT_AUTHOR_DATE="$D2" GIT_COMMITTER_DATE="$D2" \
+    git -c user.email=t@t -c user.name=t commit -qm feat   # newest non-merge commit
+  git checkout -q main
+  # `-s ours` records the merge but KEEPS main's tree → HEAD~1 (first-parent) diff is empty.
+  GIT_AUTHOR_DATE="$D2" GIT_COMMITTER_DATE="$D2" \
+    git -c user.email=t@t -c user.name=t merge -s ours --no-ff -qm "no-op back-merge" feat
+  run "$DETECT" scope "" "" "$repo"
+  [ "$status" -eq 0 ]
+  [[ "${lines[0]}" == "MODE=changes" ]]
+  [[ "$output" == *"feature.py"* ]]   # resolved via last non-merge commit, not the empty HEAD~1 diff
+}
+
+@test "scope: never dead-ends silently on a clean tree (diagnostic to stderr)" {
+  repo="$BATS_TEST_TMPDIR/cleanquiet"
+  mkdir -p "$repo" && cd "$repo" && git init -q
+  # Empty commit so HEAD exists but introduces no files and has no resolvable diff.
+  git -c user.email=t@t -c user.name=t commit -q --allow-empty -m empty
+  run "$DETECT" scope "" "" "$repo"   # bats merges stderr into $output
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"defect-scan:"* ]]
+  [[ "$output" == *"--full"* ]]
+}
+
 @test "triage: ranks a security-named, churned file above a quiet plain file" {
   repo="$BATS_TEST_TMPDIR/triage"
   mkdir -p "$repo" && cd "$repo" && git init -q
