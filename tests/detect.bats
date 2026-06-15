@@ -317,7 +317,7 @@ setup() {
 }
 
 @test "every profile declares the four required sections in order" {
-  for p in generic python react-typescript dart ruby go csharp java; do
+  for p in generic python react-typescript dart ruby go csharp java yaml; do
     f="$BATS_TEST_DIRNAME/../skills/scan/profiles/$p.md"
     [ -f "$f" ]
     grep -qE '^## Detection'           "$f"
@@ -678,6 +678,28 @@ setup() {
   [[ "$output" == *"recall=1.00"* ]]
 }
 
+@test "stacks: detects yaml extension-only (empty detect_files)" {
+  run "$DETECT" stacks "$BATS_TEST_DIRNAME/fixtures/yaml"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"yaml"* ]]
+}
+
+@test "eval: yaml corpus scores a clean run 1.0 and has a near-miss" {
+  corpus="$BATS_TEST_DIRNAME/eval/yaml/seen"
+  [ -s "$corpus/bug_actions_injection.yml.expected" ]
+  [ -f "$corpus/clean_quoted_no.yml.expected" ] && [ ! -s "$corpus/clean_quoted_no.yml.expected" ]
+  f="$BATS_TEST_TMPDIR/yml"
+  {
+    echo "bug_actions_injection.yml:7:cat#3"
+    echo "bug_norway.yml:3:coerce"
+    echo "bug_duplicate_keys.yml:4:cat#2"
+  } > "$f"
+  run "$DETECT" eval "$corpus" "$f"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"precision=1.00"* ]]
+  [[ "$output" == *"recall=1.00"* ]]
+}
+
 @test "triage: ranks .dart files (source-filter includes dart)" {
   repo="$BATS_TEST_TMPDIR/dartrepo"
   mkdir -p "$repo" && cd "$repo" && git init -q
@@ -729,6 +751,8 @@ setup() {
   [ "$("$DETECT" __fmget "$P/java.md" name)" = "java" ]
   [[ "$("$DETECT" __fmget "$P/java.md" extensions)" == *"java"* ]]
   [[ "$("$DETECT" __fmget "$P/java.md" detect_files)" == *"pom.xml"* ]]
+  [ "$("$DETECT" __fmget "$P/yaml.md" name)" = "yaml" ]
+  [[ "$("$DETECT" __fmget "$P/yaml.md" extensions)" == *"yaml"* ]]   # detect_files intentionally empty
 }
 
 @test "profiles: lists built-ins with origin=builtin" {
