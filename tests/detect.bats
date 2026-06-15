@@ -322,3 +322,26 @@ setup() {
   [ "$("$DETECT" __fmget "$P/dart.md" name)" = "dart" ]
   [[ "$("$DETECT" __fmget "$P/dart.md" detect_files)" == *"pubspec.yaml"* ]]
 }
+
+@test "profiles: lists built-ins with origin=builtin" {
+  run "$DETECT" profiles "$BATS_TEST_TMPDIR/none"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"dart"$'\t'* ]]
+  [[ "$output" == *"builtin"* ]]
+}
+
+@test "profiles: project layer shadows a same-named built-in" {
+  repo="$BATS_TEST_TMPDIR/proj"; mkdir -p "$repo/.defect-scan/profiles"
+  printf -- '---\nname: dart\nextensions: dart\n---\n' > "$repo/.defect-scan/profiles/dart.md"
+  run "$DETECT" profiles "$repo"
+  [ "$status" -eq 0 ]
+  [ "$(printf '%s\n' "$output" | awk -F'\t' '$1=="dart"' | wc -l | tr -d ' ')" -eq 1 ]
+  [[ "$(printf '%s\n' "$output" | awk -F'\t' '$1=="dart"{print $3}')" == "project" ]]
+}
+
+@test "profiles: --no-project (env) hides project layer" {
+  repo="$BATS_TEST_TMPDIR/proj2"; mkdir -p "$repo/.defect-scan/profiles"
+  printf -- '---\nname: zzlang\nextensions: zz\n---\n' > "$repo/.defect-scan/profiles/zzlang.md"
+  run env DEFECT_SCAN_NO_PROJECT=1 "$DETECT" profiles "$repo"
+  [[ "$output" != *"zzlang"* ]]
+}

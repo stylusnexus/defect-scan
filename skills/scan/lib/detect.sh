@@ -172,16 +172,42 @@ cmd_issues() {
   printf '%s' "$out" | jq -r '.[] | "#\(.number)\t\(.state)\t\(.title)"'
 }
 
+# Echo the enabled profile dirs, low→high precedence, one per line.
+profile_layers() {
+  repo="${1:-$PWD}"
+  echo "$(skill_dir)/profiles"                                   # builtin
+  [ -n "${DEFECT_SCAN_NO_USER:-}" ]    || echo "$HOME/.config/defect-scan/profiles"
+  [ -n "${DEFECT_SCAN_NO_PROJECT:-}" ] || echo "$repo/.defect-scan/profiles"
+}
+
+cmd_profiles() {
+  repo="${1:-$PWD}"
+  { profile_layers "$repo" | while IFS= read -r dir; do
+      case "$dir" in
+        "$repo/.defect-scan/"*) origin=project ;;
+        "$HOME/.config/"*) origin=user ;;
+        *) origin=builtin ;;
+      esac
+      [ -d "$dir" ] || continue
+      for f in "$dir"/*.md; do
+        [ -f "$f" ] || continue
+        name="$(fm_get "$f" name)"; [ -n "$name" ] || name="$(basename "$f" .md)"
+        printf '%s\t%s\t%s\n' "$name" "$f" "$origin"
+      done
+    done; } | awk -F'\t' '{m[$1]=$0} END{for(k in m) print m[k]}'
+}
+
 main() {
   sub="${1:-}"; [ $# -gt 0 ] && shift || true
   case "$sub" in
-    stacks)   cmd_stacks "$@" ;;
-    tool)     cmd_tool "$@" ;;
-    scope)    cmd_scope "$@" ;;
-    triage)   cmd_triage "$@" ;;
-    issues)   cmd_issues "$@" ;;
-    __fmget)  fm_get "$@" ;;
-    *) echo "usage: detect.sh {stacks|tool|scope|triage|issues} ..." >&2; return 2 ;;
+    stacks)    cmd_stacks "$@" ;;
+    tool)      cmd_tool "$@" ;;
+    scope)     cmd_scope "$@" ;;
+    triage)    cmd_triage "$@" ;;
+    issues)    cmd_issues "$@" ;;
+    profiles)  cmd_profiles "$@" ;;
+    __fmget)   fm_get "$@" ;;
+    *) echo "usage: detect.sh {stacks|tool|scope|triage|issues|profiles} ..." >&2; return 2 ;;
   esac
 }
 main "$@"
