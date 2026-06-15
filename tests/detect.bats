@@ -395,3 +395,12 @@ setup() {
   [[ "$output" == *"a.toml"* ]]
   [[ "$output" != *"b.md"* ]]
 }
+
+@test "patterns: lists built-in recurring.md plus a project pattern pack" {
+  repo="$BATS_TEST_TMPDIR/packs"; mkdir -p "$repo/.defect-scan/patterns"
+  printf '# P-custom — our billing rule\n' > "$repo/.defect-scan/patterns/custom.md"
+  run "$DETECT" patterns "$repo"
+  [ "$status" -eq 0 ]
+  [[ "${lines[0]}" == *"recurring.md" ]]
+  [[ "$output" == *".defect-scan/patterns/custom.md"* ]]
+}

@@ -220,6 +220,13 @@ cmd_profiles() {
     done; } | awk -F'\t' '{m[$1]=$0} END{for(k in m) print m[k]}'
 }
 
+cmd_patterns() {
+  repo="${1:-$PWD}"
+  echo "$(skill_dir)/patterns/recurring.md"
+  [ -n "${DEFECT_SCAN_NO_USER:-}" ]    || for f in "$HOME/.config/defect-scan/patterns"/*.md; do [ -f "$f" ] && echo "$f"; done
+  [ -n "${DEFECT_SCAN_NO_PROJECT:-}" ] || for f in "$repo/.defect-scan/patterns"/*.md; do [ -f "$f" ] && echo "$f"; done
+}
+
 main() {
   sub="${1:-}"; [ $# -gt 0 ] && shift || true
   case "$sub" in
@@ -229,9 +236,10 @@ main() {
     triage)    cmd_triage "$@" ;;
     issues)    cmd_issues "$@" ;;
     profiles)  cmd_profiles "$@" ;;
+    patterns)  cmd_patterns "$@" ;;
     __fmget)   fm_get "$@" ;;
     __fmfield) fm_field "$@" ;;
-    *) echo "usage: detect.sh {stacks|tool|scope|triage|issues|profiles} ..." >&2; return 2 ;;
+    *) echo "usage: detect.sh {stacks|tool|scope|triage|issues|profiles|patterns} ..." >&2; return 2 ;;
   esac
 }
 main "$@"
