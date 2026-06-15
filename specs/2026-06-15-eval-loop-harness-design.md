@@ -266,9 +266,12 @@ out of graded ground truth without a human author + reviewed merge.
   `Clean*.java` with sidecars and a passing test (`detect.bats:745-758`). **No work.**
   (The earlier "fill java" item was a false reading from a `bug_*`/`clean_*` glob that
   missed Java's `Bug*`/`Clean*` naming.)
-- **Add `held-out/` splits**: a small held-out set per language for the anti-overfitting
-  gate (§4). Land incrementally — `eval-run` tolerates a missing held-out split (scores
-  `seen` only). Start with higher-traffic languages.
+- **Add `held-out/` splits — Java is the pilot.** Java's `seen/` is already the
+  best-structured corpus (3 bug + 3 paired near-miss cleans), so it gets the **first**
+  `held-out/` split and is where the seen-vs-held-out overfit gate (§4) is proven
+  end-to-end. Other languages follow incrementally — `eval-run` tolerates a missing
+  held-out split (scores `seen` only), so they need not all land at once. (Java's
+  `seen/` is complete and unchanged; this adds held-out depth, not seen fixtures.)
 - **Document the workflow** in `CONTRIBUTING.md`: confirmed-FP or escaped-prod-bug →
   add fixture + `.expected` + (optional) check → PR. The real self-improvement loop.
 
