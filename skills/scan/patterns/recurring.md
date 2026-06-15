@@ -5,6 +5,36 @@ The reasoning pass (SKILL.md Stage 3) consults these in addition to the five
 `baseline-categories.md` and the active profile's checklist. Each pattern is
 language-agnostic; the examples show how it tends to manifest.
 
+**What belongs here (the inclusion test).** A pattern earns a `P` slot **only if it
+is language-agnostic** — defined by *semantics or architecture*, so the same defect
+concept could recur in Python **and** Go **and** Java (charge/refund ordering,
+identifier drift across boundaries, authorization-on-output, injection-into-a-sink).
+The litmus: *"would this same defect class appear in ≥2 unrelated languages?"* If yes,
+it's a pattern here. If the detection keys on a specific language's construct, idiom,
+or API (`except:` bare-clause, `key={index}`, an unchecked Go `err`, a C# `IDisposable`
+not in a `using`), it belongs in **that language's profile checklist** instead — where
+it can map to a `cat#` and *cite* the relevant `P#` rather than re-explaining it.
+Product/org-specific detections (one app's billing rules, routes, field names) go in a
+repo's **project pattern pack** (`.defect-scan/patterns/`), never here. Keep the three
+tiers distinct: `baseline-categories.md` (5 universal categories) → this file (named
+cross-cutting patterns) → profiles (language specializations that reference both).
+
+**Default severities** (suggested baselines — *not* confidence; context/project can
+override, see `baseline-categories.md`):
+
+| Pattern | Default severity |
+|---------|------------------|
+| P1 metered-action correctness | High |
+| P2 identifier drift | Medium |
+| P3 privileged-audience leak | High |
+| P4 subprocess/arg injection | High |
+| P5 partial-fetch overwrite | High |
+| P6 pagination default-limit / N+1 | Medium |
+| P7 mock-only tests | Low |
+| P8 ETL silent data-loss | High |
+| P9 SQL schema/type drift | High |
+| P10 missing security headers | Medium |
+
 ---
 
 ## P1 — Metered-action correctness (charge/quota ordering + compensation)
@@ -33,9 +63,10 @@ lacking an idempotency guard.
 queue enqueue failure, tier check, sanitization block) get added later without
 revisiting the compensation contract.
 
-**Manifested as (CritForge):** charge on sanitization-blocked input; no refund on
-async early-return; double-charge + charge-on-rejected-request; charge-before-
-validation; "button no-ops — no result, no error, credits not deducted."
+**Seen in the wild:** a charge committed before input validation; no compensating
+refund on an async early-return or a downstream failure; a retried/duplicated
+request double-charges; a cache-hit or no-op path that returns success without a
+charge (delivered-but-free) or charges without delivering (charged-but-empty).
 
 ---
 
@@ -59,10 +90,11 @@ registration assertion (every variant registers, or a typed union).
 in different files; nothing forces the keys to agree, so a `_` vs `-` slips
 through review and only breaks in prod for that one content type.
 
-**Manifested as (CritForge):** `random_table` route vs `random-table` registry;
-`skill_challenge` "No pipeline configuration"; `legendary_hero` vs
-`legendary-hero` 500s in prod; validator registration mismatch; handler/intent
-type mismatch.
+**Seen in the wild:** a route path (`some_action`) vs a registry/lookup key
+(`some-action`) — a `_` vs `-` (or camelCase vs kebab) mismatch; a handler
+registered under a name the dispatcher never calls; an enum/string key on the
+producer side that disagrees with the consumer — only 500s in prod for that one
+type because nothing forces the two sides to agree.
 
 ---
 
@@ -82,10 +114,10 @@ the *same* gate — the bug is usually one path forgetting what its siblings do.
 **Why it recurs:** a new export/render/response path is added and reimplements
 serialization without re-applying the visibility gate the original path had.
 
-**Manifested as (CritForge):** player map/PDF exports leak secret rooms, hidden
-traps, and element names/positions; `pass2-player.json` leaks GM-secret NPC
-fields; map legend leaks secret-room contents — reachability/audience gate applied
-on one path but not its sibling.
+**Seen in the wild:** a secondary export (PDF/CSV) or API response leaks
+admin-only / hidden / unpublished fields that the primary UI view filters out; a
+newly added serializer emits records carrying `internal`/`gmOnly`/`draft` flags
+because it didn't re-apply the visibility gate its sibling path already has.
 
 ---
 
@@ -116,10 +148,10 @@ interpolated into `yq -e`/`jq`/templates.
 **Why it recurs:** the safe pattern is established once; each new callsite or each
 new source of a "name" (a new file-derived identifier) reintroduces one missing guard.
 
-**Manifested as (work-plan-toolkit):** option injection via `--`-prefixed track
-names and dash-led branch names → arbitrary file overwrite; 33/37 subprocess
-callsites with no timeout → indefinite hang; `init` clobbers files outside
-`notes_root`; yq expression injection rewriting `config.yml`.
+**Seen in the wild:** a user-controlled value (a name, a branch, a path) starting
+with `-`/`--` is parsed as an option flag → arbitrary file overwrite; subprocess
+calls with no timeout → indefinite hang; a command writing outside its intended
+root; expression injection into a config-rewriting tool (e.g. `yq`/`jq`).
 
 ---
 
@@ -144,9 +176,9 @@ previously-populated field. Check the error/timeout branch specifically.
 **Why it recurs:** the happy path (full fetch → write) is written first; the
 partial/error path is added later and reuses the same unconditional write.
 
-**Manifested as (work-plan-toolkit):** partial GitHub fetches overwrite valid
-canonical-table data with `(not fetched)`; untracked issues never surface for a
-registered repo because of incomplete state.
+**Seen in the wild:** a partial/failed remote fetch overwrites valid cached data with
+a placeholder/empty value; records never surface because incomplete state was written
+over the good state instead of being merged or skipped.
 
 ---
 
@@ -171,9 +203,9 @@ could be one batched call.
 **Why it recurs:** the default "just works" on small data in dev and silently
 truncates / slows in production at scale.
 
-**Manifested as:** work-plan-toolkit export/refresh slow at scale via per-issue
-`gh` fetches (#94, #106); and — first-hand — `gh issue list` silently capping at
-30 made a 720-open-issue repo look like it had 30 (caught while building this skill).
+**Seen in the wild:** an export/refresh that issues one API call per item (N+1) and
+crawls at scale; a list/search API silently applying a default page cap (often 30) so
+a repo/dataset with hundreds of items appears to have only the first page.
 
 ---
 
@@ -199,10 +231,10 @@ on the request hot path (a bug there 500s every request).
 **Why it recurs:** mocks are faster to write and keep unit tests hermetic; the
 real-contract test is "added later" and never is, so schema drift goes unseen.
 
-**Manifested as (discogorama-recs):** `/enrichment/lookup` 500s on every real call
-(misaliased CTE column) — *"live SQL bug behind mock-only tests"*; `/auth/register`
-500s on fresh install (missing schema); `RateLimitMiddleware` `AttributeError` on
-every API request.
+**Seen in the wild:** an endpoint 500s on every *real* call because of a SQL bug the
+mocks never exercised ("live SQL bug behind mock-only tests"); a route 500s on a fresh
+install because a migration/schema step is missing; a middleware throws on every API
+request because of a contract change the unit tests stubbed past.
 
 ---
 
@@ -228,9 +260,9 @@ that unconditionally set columns derivable from a fragile parse.
 **Why it recurs:** the mapping is written against a few sample records; fields
 absent from the samples (or added later to the source) are never wired through.
 
-**Manifested as (discogorama-recs):** Discogs ingest silently drops 5 fields
-(labels, notes, identifiers, extra_artists, label_ids) — NULL across all 18.4M
-rows; monthly upsert wipes destination data when the parser regresses (#167).
+**Seen in the wild:** a bulk ingest silently drops several source fields (they end up
+NULL across the entire table); a scheduled upsert wipes destination data when the
+parser regresses and emits empty/partial records over the good ones.
 
 ---
 
@@ -258,10 +290,9 @@ with P7 — these are exactly what mock-only tests miss.
 **Why it recurs:** SQL lives in strings outside the type system; a refactor renames
 or re-aliases a column in one CTE and the downstream reference rots silently.
 
-**Manifested as (discogorama-recs):** `column "master_id" does not exist` —
-unqualified ref vs `discogs_master_id` alias in the `ranked` CTE; `parent_label`
-string inserted into a `bigint` column → repeated insert aborts; fresh-install
-auth schema missing.
+**Seen in the wild:** `column "x" does not exist` from an unqualified reference vs an
+aliased column in a CTE; a string value inserted into an integer column → every insert
+aborts; a query referencing a column a migration renamed or dropped.
 
 ---
 
@@ -295,7 +326,6 @@ those as High (tool-confirmed); reasoning-only header-absence is Medium.
 app works fine without them, so they're easy to omit or weaken (`unsafe-inline`
 "just to ship") and nothing fails a test.
 
-**Manifested as:** the security baseline most web apps are measured against
-(OWASP secure-headers; Stylus Nexus production header requirements). Surfaced as
-"escaper/CSP nits" in work-plan-toolkit's webview hardening (#197), where strict
-CSP + per-load nonce was the correct bar.
+**Seen in the wild:** the security baseline most web apps are measured against
+(OWASP secure-headers). Surfaced as "CSP nits" in webview/SSR hardening, where a
+strict CSP with a per-load nonce (no `unsafe-inline`) is the correct bar.

@@ -113,6 +113,12 @@ NOT a real defect (guard exists elsewhere, input is trusted, path unreachable).
 - Refuted → drop it (or **Low** if genuinely ambiguous).
 Tool-confirmed findings are **High** by definition.
 
+The above is the **confidence tier**. Also assign each finding a **severity** (how bad
+if real) on a *separate* axis: take the default from its category
+(`baseline-categories.md`) or pattern (`recurring.md`), adjust for context, and honor
+any project `.defect-scan/` severity policy (highest-precedence layer wins). Report
+both axes (`report-format.md`); severity is what `--file-issues` maps to a priority.
+
 ### Stage 3b — Cross-model verification (only when `--cross-model`)
 Get a second opinion from a **different model** (Codex) — different models have
 different blind spots, so this catches both false positives the scanning model is

@@ -66,6 +66,25 @@ or `~/.config/defect-scan/` (personal) — no core changes. Copy
 `skills/scan/profiles/TEMPLATE.md.example`, fill four frontmatter fields, done.
 **Full step-by-step guide: [`EXTENDING.md`](./EXTENDING.md).**
 
+### Three layers — and what belongs where
+Both **profiles** (languages) and **patterns** (cross-cutting defect classes) resolve
+across three layers, low→high precedence; higher layers shadow lower **by name**:
+
+| Layer | Profiles | Patterns | What belongs here |
+|-------|----------|----------|-------------------|
+| **Built-in (global)** | `skills/scan/profiles/` | `skills/scan/patterns/recurring.md` | **Generic** detections useful to *everyone* — no product/org/customer specifics. This is a public, shared plugin. |
+| **User** (`~/.config/defect-scan/`) | `profiles/*.md` | `patterns/*.md` | Your personal rules across all your repos. |
+| **Project** (`<repo>/.defect-scan/`) | `profiles/*.md` | `patterns/*.md` | **Product/org-specific** detections — your billing rules, your naming conventions, your internal APIs. Committed with the repo, scoped to it. |
+
+The dividing line: **built-ins stay generic; anything specific to one product, codebase,
+or company goes in that repo's project layer.** Example — the built-in P1 "metered-action
+correctness" pattern is generic billing-integrity; a specific product's billing
+manifestations (exact routes, field names, known incidents) belong in *its*
+`.defect-scan/patterns/`, not here. `lib/detect.sh profiles <repo>` and `… patterns <repo>`
+show every layer's contributions with their origin (`builtin`/`user`/`project`); set
+`DEFECT_SCAN_NO_USER=1` / `DEFECT_SCAN_NO_PROJECT=1` (the `--no-user-profiles` /
+`--no-project-profiles` scan flags) to restrict to built-ins only.
+
 ## Local dev
 `./install.sh` symlinks `skills/scan/` into `~/.claude/skills/defect-scan` so it
 loads while you iterate. Remove that symlink once the plugin is installed, to
