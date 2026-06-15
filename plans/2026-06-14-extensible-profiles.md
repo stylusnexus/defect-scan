@@ -594,41 +594,153 @@ git commit -m "feat(defect-scan): SKILL.md orchestration for layered profiles + 
 
 ---
 
-## Task 9: Docs (README) + full-suite verification
+## Task 9: Extension guide (clear, copy-paste) + template + help pointer + verification
+
+The extension instructions must be **very clear** — a user adding a language
+should succeed by copying a template and filling four fields, without reading core.
+This task ships: a copy-me template profile, a step-by-step `EXTENDING.md`, a field
+reference, a worked example, the help pointer, and the README link.
 
 **Files:**
-- Modify: `README.md`
-- Modify: `tests/detect.bats` (none; final run)
+- Create: `skills/scan/profiles/TEMPLATE.md.example`
+- Create: `EXTENDING.md`
+- Modify: `README.md`, `skills/scan/commands/help.md`
+- Modify: `tests/detect.bats` (docs-presence guard)
 
-- [ ] **Step 1: Add a README section**
+- [ ] **Step 1: Create the copy-me template** `skills/scan/profiles/TEMPLATE.md.example`
 
 ```markdown
-## Extending it (zero core edits)
-Drop a profile into `.defect-scan/profiles/<lang>.md` (team, committed) or
-`~/.config/defect-scan/profiles/<lang>.md` (personal). Frontmatter declares
-detection + scannable extensions:
-\`\`\`markdown
+---
+name: <profile-name>            # required — unique id (lowercase), e.g. ruby
+detect_files: <file> <file>     # optional — manifest files; any present → match (e.g. Gemfile)
+extensions: <ext> <ext>         # optional — source extensions WITHOUT dots (e.g. rb); enables triage
+tools: <tool> <tool>            # optional — analyzer command NAMES only (e.g. rubocop)
+---
+# Profile: <profile-name>
+
+## Detection
+When this profile applies (mirror the frontmatter signals in prose).
+
+## Toolchain
+- `<tool> <args>`  — what it checks. Resolved via `detect.sh tool <name>`.
+Install hint: `<how to install the tools>`.
+
+## Reasoning checklist
+- cat#1 … cat#2 … cat#3 … cat#4 … cat#5 …  (specialize the 5 baseline categories)
+- <language>-specific: <the traps unique to this language>
+
+## Auto-fix-safe
+Which findings are safe to auto-apply (usually none unless tool-confirmed + trivial).
+```
+Note: the `.example` suffix keeps it out of discovery (it is not a real profile).
+
+- [ ] **Step 2: Create `EXTENDING.md`** (the clear, step-by-step guide)
+
+````markdown
+# Extending defect-scan
+
+Add a language or your own defect rules **without editing core** — just drop files.
+
+## Add a language (3 steps)
+1. **Pick where it lives:**
+   - Team-wide (committed with the repo): `.defect-scan/profiles/<name>.md`
+   - Personal (all your repos): `~/.config/defect-scan/profiles/<name>.md`
+2. **Copy the template** `skills/scan/profiles/TEMPLATE.md.example` to that path,
+   rename it `<name>.md`.
+3. **Fill the frontmatter** (4 fields) and the prose. Done — `/defect-scan:scan`
+   now detects it, triages its files, and reasons with your checklist.
+
+### Frontmatter field reference
+| field | required | format | purpose |
+|-------|----------|--------|---------|
+| `name` | yes | one lowercase word | profile id; also the dedupe/shadow key |
+| `detect_files` | no | space/comma list of filenames | repo matches if any is present |
+| `extensions` | no | space/comma list, **no dots** | matches files; **enables triage scanning** |
+| `tools` | no | space/comma list of command names | analyzers the Toolchain prose runs |
+
+### Worked example — add Ruby
+`.defect-scan/profiles/ruby.md`:
+```markdown
 ---
 name: ruby
 detect_files: Gemfile
 extensions: rb
 tools: rubocop
 ---
-## Detection … ## Toolchain … ## Reasoning checklist … ## Auto-fix-safe …
-\`\`\`
-Detection, triage, and the reasoning pass pick it up automatically — precedence
-project > user > built-in, with frontmatter fields inherited from a shadowed
-profile. Custom defect packs: drop `.md` files in `.defect-scan/patterns/`.
-**Safety:** tools from project/user profiles are confirmed before running; only
-built-in profiles auto-run their analyzers.
+# Profile: ruby
+## Detection
+A `Gemfile` or any `.rb` file.
+## Toolchain
+- `rubocop --format json <files>` — lint/correctness. Install: `gem install rubocop`.
+## Reasoning checklist
+- cat#2: rescue with empty body / `rescue => e` that swallows.
+- cat#4: `File.open` without a block; unclosed connections.
+- ruby-specific: `==` vs `eql?`, mutable default args via `||=`, monkey-patch hazards.
+## Auto-fix-safe
+Only `rubocop -a` autocorrectable cops in a safe set (layout/style).
+```
+Scan a Ruby repo → it's detected, `.rb` files are triaged, RuboCop runs.
+
+## Add your own defect patterns
+Drop `.md` files in `.defect-scan/patterns/` (team) or
+`~/.config/defect-scan/patterns/` (personal). The reasoning pass reads them
+alongside the built-in P1–P10 — encode your org's recurring bugs.
+
+## Precedence & inheritance
+Project (`.defect-scan/`) overrides user (`~/.config/defect-scan/`) overrides
+built-in, **by `name`**. A field you leave out inherits from the profile you shadow
+— so tweaking one field of a built-in is safe (you won't lose its `extensions`).
+
+## Safety
+Analyzers declared by **your own** project/user profiles are **confirmed before
+running** (defect-scan never auto-executes a tool command from a scanned repo —
+that would be the very RCE class it flags as pattern P4). Only built-in profiles
+auto-run their analyzers.
+
+## Toggle layers
+`--no-project-profiles` / `--no-user-profiles` scan with built-ins only.
+````
+
+- [ ] **Step 3: Add a short README section linking to it**
+
+```markdown
+## Extending it (zero core edits)
+Add a language or custom defect rules by dropping files in `.defect-scan/` (team)
+or `~/.config/defect-scan/` (personal) — no core changes. Copy
+`skills/scan/profiles/TEMPLATE.md.example`, fill four frontmatter fields, done.
+**Full step-by-step guide: [`EXTENDING.md`](./EXTENDING.md).**
 ```
 
-- [ ] **Step 2: Run the full suite**
+- [ ] **Step 4: Add a help pointer** in `skills/scan/commands/help.md` (under "What it uses"):
+```markdown
+- **Extensible:** add a language or defect pack by dropping files in `.defect-scan/`
+  — see `EXTENDING.md` (copy `profiles/TEMPLATE.md.example`, fill 4 fields).
+```
+
+- [ ] **Step 5: Docs-presence guard test** in `tests/detect.bats`:
+```bash
+@test "extension docs exist: EXTENDING.md, template, help pointer" {
+  root="$BATS_TEST_DIRNAME/.."
+  [ -f "$root/EXTENDING.md" ]
+  [ -f "$root/skills/scan/profiles/TEMPLATE.md.example" ]
+  grep -q "EXTENDING.md" "$root/README.md"
+  grep -q "EXTENDING.md" "$root/skills/scan/commands/help.md"
+  # the template must not be discovered as a real profile (no .md extension match)
+  grep -q "TEMPLATE.md.example" "$root/EXTENDING.md"
+}
+```
+
+- [ ] **Step 6: Confirm the template is NOT discovered as a profile**
+
+Run: `skills/scan/lib/detect.sh profiles /tmp | grep -i template && echo LEAK || echo "ok — template not discovered"`
+Expected: `ok — template not discovered` (discovery globs `*.md`, not `*.md.example`).
+
+- [ ] **Step 7: Run the full suite**
 
 Run: `bats tests/detect.bats`
-Expected: all pass (35 prior + the new tests).
+Expected: all pass (prior suite + every new test, incl. the docs-presence guard).
 
-- [ ] **Step 3: Real-world proof on the Dart monorepo (manual)**
+- [ ] **Step 8: Real-world proof on the Dart monorepo (manual)**
 
 Run:
 ```bash
@@ -638,10 +750,10 @@ DETECT="$PWD/skills/scan/lib/detect.sh"
 Expected: still prints `dart` (now via the migrated built-in frontmatter, not the
 old hardcode).
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 9: Commit**
 ```bash
-git add README.md
-git commit -m "docs(defect-scan): document .defect-scan extensibility"
+git add EXTENDING.md README.md skills/scan/profiles/TEMPLATE.md.example skills/scan/commands/help.md tests/detect.bats
+git commit -m "docs(defect-scan): clear language-extension guide (EXTENDING.md + template)"
 ```
 
 ---
