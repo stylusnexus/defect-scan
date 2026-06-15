@@ -1,10 +1,34 @@
 # defect-scan
 
-Language-aware defect-finding **plugin** for Claude Code. Detects the stack,
-triages files by risk, runs the real analyzers a project already has, reasons
+Language-aware defect-finding **plugin** for Claude Code (and Codex). Detects the
+stack, triages files by risk, runs the real analyzers a project already has, reasons
 about what tools miss using battle-tested patterns, and reports findings in
 confidence tiers (correlated against the issue tracker). Report-only by default;
 `--fix` applies the high-confidence tier.
+
+## Built-in languages
+14 profiles, each pairing the language's real analyzers with a reasoning checklist
+mapped to the five baseline defect categories + language-specific footguns:
+
+| Profile | Analyzers (auto-run if installed) |
+|---|---|
+| **python** | ruff, mypy · +bandit, pip-audit |
+| **react-typescript** | tsc, eslint (type-aware) · +npm audit, osv-scanner |
+| **ruby** | rubocop · +brakeman, bundler-audit |
+| **go** | go vet, staticcheck, golangci-lint, govulncheck |
+| **csharp** | Roslyn analyzers, dotnet list --vulnerable · +Security Code Scan, roslynator |
+| **java** | Error Prone, SpotBugs + find-sec-bugs, PMD, OWASP dependency-check |
+| **kotlin** | detekt, ktlint · +Android Lint |
+| **swift** | SwiftLint, swift-format |
+| **php** | PHPStan, Psalm (+taint), composer audit |
+| **rust** | clippy, cargo-audit, cargo-deny |
+| **dart** (Flutter) | dart/flutter analyze |
+| **yaml** | yamllint · +actionlint/zizmor (Actions), kube-linter (k8s), ansible-lint |
+| **shell** | shellcheck |
+| **generic** | cross-cutting patterns + optional semgrep/gitleaks on any stack |
+
+Missing analyzers are reported with an install hint and skipped — the scan never
+aborts. Add your own language or rules with zero core edits (see *Extending it*).
 
 ## Layout (plugin)
 ```
