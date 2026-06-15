@@ -93,6 +93,18 @@ New subcommands:
 - `detect.sh profiles [<repo-root>]` → enumerates profile files across the three
   layers, dedupes by `name` (project wins over user wins over built-in), prints
   one line each: `name⇥path⇥origin` where origin ∈ `builtin|user|project`.
+
+**Shadow-merge rule (frontmatter inherits; prose replaces).** When a profile
+shadows a same-named one from a lower-precedence layer, frontmatter fields merge
+**field-by-field**: a field *absent* in the higher-precedence profile inherits the
+shadowed profile's value (so a project `dart.md` that omits `extensions` still
+gets `.dart` from the built-in's `extensions` — it cannot silently drop a language
+from triage). The **prose** (Detection/Toolchain/Reasoning/Auto-fix-safe) comes
+entirely from the winning profile (prose is not merged). `origin` reflects the
+winning (highest-precedence) layer — so a shadowing project profile's tools are
+correctly gated as `origin=project` even though some frontmatter was inherited.
+If, after merge, the effective profile still has no `extensions`, warn (its files
+won't triage).
 - `detect.sh patterns [<repo-root>]` → prints the path of built-in `recurring.md`
   plus every `patterns/*.md` from the user and project layers (no dedupe — packs
   are additive). One path per line.
@@ -150,8 +162,10 @@ A tiny frontmatter reader (awk) is shared by `cmd_stacks`, `cmd_triage`, and
   on stderr, continue. One bad drop-in never aborts a scan.
 - Profile with no `extensions` → contributes detection/reasoning but its files
   won't be triaged; the report header notes it.
-- Name collision across layers → precedence wins; the shadowed profile is noted in
-  the report header (don't silently override).
+- Name collision across layers → precedence wins with the **shadow-merge rule**
+  (frontmatter fields inherit from the shadowed profile when absent; prose comes
+  from the winner). The shadow is noted in the report header (don't silently
+  override). A merged profile that still lacks `extensions` warns.
 - Missing `~/.config/defect-scan` or `./.defect-scan` dirs → simply no extra
   profiles; never an error.
 
@@ -163,6 +177,9 @@ A tiny frontmatter reader (awk) is shared by `cmd_stacks`, `cmd_triage`, and
   from a sample header; tolerates comma- and space-separated lists.
 - `detect.sh profiles` merges three layers; a **project profile shadows a
   same-named built-in** (origin/path reflect the project copy).
+- **Shadow-merge:** a project profile named `dart` that omits `extensions` still
+  yields `.dart` in triage (inherited from the built-in's frontmatter), while its
+  prose/origin come from the project copy.
 - **Zero-core-edit proof:** a project-local profile for a fake language
   (`toml-lang`, `extensions: toml`, `detect_files: foo.toml`) makes `stacks`
   detect it AND triage rank a `.toml` file — with no change to `detect.sh` source.
