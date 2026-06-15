@@ -28,26 +28,16 @@ fm_get() {
 
 cmd_stacks() {
   root="${1:?usage: detect.sh stacks <dir>}"
-  found=""
-  # React/TypeScript: a package.json plus either a tsconfig or any .ts/.tsx file.
-  if [ -f "$root/package.json" ]; then
-    if [ -f "$root/tsconfig.json" ] || \
-       find "$root" -type f \( -name '*.ts' -o -name '*.tsx' \) 2>/dev/null | head -1 | grep -q .; then
-      found="$found react-typescript"
-    fi
-  fi
-  # Python: pyproject.toml, setup.py, or any .py file.
-  if [ -f "$root/pyproject.toml" ] || [ -f "$root/setup.py" ] || \
-     find "$root" -type f -name '*.py' 2>/dev/null | head -1 | grep -q .; then
-    found="$found python"
-  fi
-  # Dart/Flutter: pubspec.yaml or any .dart file.
-  if [ -f "$root/pubspec.yaml" ] || \
-     find "$root" -type f -name '*.dart' 2>/dev/null | head -1 | grep -q .; then
-    found="$found dart"
-  fi
-  [ -n "$found" ] || found="generic"
-  for p in $found; do echo "$p"; done
+  matched="$("$0" profiles "$root" | while IFS="$(printf '\t')" read -r name _ _; do
+    [ "$name" = "generic" ] && continue
+    df="$(fm_field "$name" detect_files "$root")"
+    ext="$(fm_field "$name" extensions "$root")"
+    m=""
+    for f in $df;  do [ -e "$root/$f" ] && m=1; done
+    for e in $ext; do find "$root" -type f -name "*.$e" 2>/dev/null | head -1 | grep -q . && m=1; done
+    [ -n "$m" ] && echo "$name"
+  done | sort -u)"
+  if [ -n "$matched" ]; then printf '%s\n' "$matched"; else echo "generic"; fi
 }
 cmd_tool() {
   name="${1:?usage: detect.sh tool <name> [cwd]}"
