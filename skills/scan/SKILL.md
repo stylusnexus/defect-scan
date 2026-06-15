@@ -27,6 +27,11 @@ below are shorthand for that absolute path.
 - `--lang <profile>` → force a profile, skip detection.
 - `--no-correlate` → skip the tracker-correlation stage (Stage 4a). Correlation is
   **on by default** when a GitHub remote and `gh` are available.
+- `--file-issues` → after the report, file a GitHub issue for each **[NEW]** finding
+  (High tier by default; `--file-issues=medium` also files Medium; Low is never
+  filed). A **write action** — see Stage 4b for the auth requirement, the mandatory
+  dedup gate, label handling, and the batch confirmation. `--dry-run` pairs with it
+  to preview without filing.
 - `--help` → print this usage and exit; do not scan.
 
 ## Stage 1 — Detect
@@ -37,6 +42,11 @@ lib/detect.sh stacks "<repo-root>"                                 # one profile
 ```
 A repo may match multiple profiles; run each matched profile over its own files.
 `--lang` overrides detection.
+
+Profiles are discovered across three layers (built-in, `~/.config/defect-scan`,
+`./.defect-scan`); `lib/detect.sh profiles <repo>` lists `name⇥path⇥origin`. Load
+each matched profile by its path. `--no-user-profiles` / `--no-project-profiles`
+set `DEFECT_SCAN_NO_USER=1` / `DEFECT_SCAN_NO_PROJECT=1` for a built-in-only scan.
 
 ## Stage 1b — Triage (approach a large codebase methodically)
 Rank the in-scope files so the deep passes hit the highest-risk code first:
@@ -65,6 +75,13 @@ resolve, record it as **missing** with the profile's install hint and continue �
 never abort the scan. If a tool crashes or times out, capture stderr, mark that
 check **inconclusive**, and continue.
 
+**Origin-gated execution.** For a profile with `origin=builtin`, run its tools
+automatically. For `origin=user` or `origin=project`, the profile came from a
+scanned/user location — surface the suggested tool and CONFIRM with the user
+before running it; resolve it via `lib/detect.sh tool <name>` (never a raw shell
+string from the profile). This prevents a scanned repo's profile from executing
+arbitrary commands (pattern P4).
+
 **Cross-cutting deep analyzers (optional, any stack — run if installed).** These
 sharpen ground truth for the reasoning categories tools usually miss; resolve each
 via `lib/detect.sh tool <name>` and skip-with-hint if absent:
@@ -83,9 +100,9 @@ such with the stderr reason; never let a tool error read as a passing file.
 
 ## Stage 3 — Reasoning pass
 Read the in-scope files against the profile's `## Reasoning checklist`,
-`baseline-categories.md`, and `patterns/recurring.md` (battle-tested cross-cutting
-patterns: metered-action charge/refund correctness, string-keyed identifier drift,
-privileged-audience data leaks). For EVERY reasoning-only finding, run an
+`baseline-categories.md`, and
+consult every file listed by `lib/detect.sh patterns <repo>` (built-in `patterns/recurring.md`
+P1–P10 plus any user/project pattern packs). For EVERY reasoning-only finding, run an
 **adversarial verification** pass before ranking: state the strongest case that the finding is
 NOT a real defect (guard exists elsewhere, input is trusted, path unreachable).
 - Survives with a clear repro path → eligible for **High**.
@@ -117,6 +134,63 @@ candidates (don't string-match) and tag each finding:
   may have regressed.
 If correlation is unavailable (no `gh`/remote — exit 3), say so in the header and
 treat every finding as uncorrelated; never imply NEW when you simply couldn't check.
+
+### Stage 4b — File issues (offer always; act on --file-issues)
+Turn confirmed findings into tracker issues — **deduped, opt-in, and write-gated.**
+
+**Offer it even without the flag.** When a GitHub remote and `gh` are available and
+the report has one or more **[NEW]** findings, end the report by offering: *"N new
+High finding(s) — file them as GitHub issues? This is a write action and needs `gh`
+authentication (`gh auth status`)."* If `--file-issues` was passed, skip the offer
+and go straight to the confirmation batch below.
+
+**Dedup is mandatory — never file a duplicate.** Filing is gated on Stage 4a:
+- `--file-issues` **requires** correlation. If the user combined it with
+  `--no-correlate`, refuse and explain — you cannot dedup without the tracker check.
+- File **only** findings tagged **[NEW]**. For **[LIKELY FILED #N]** / **[RELATED #N]**,
+  do not create — point at / link the existing issue instead. For
+  **[VERIFY REGRESSION #N]**, do not create — flag the possible regression on #N.
+- Immediately before creating each issue, re-run `lib/detect.sh issues "<terms>"`
+  one final time and **also** dedup against titles you've already filed earlier in
+  this same batch — this catches races and within-run duplicates.
+
+**Authentication.** Filing needs an authenticated `gh`. If `gh auth status` fails or
+`issues-create` returns exit 3, stop and tell the user to authenticate; never treat
+a failed file as "filed."
+
+**Labels — propose the repo's existing labels; don't assume.** List them once with
+`lib/detect.sh labels` and reason over the result for two dimensions:
+
+*Kind label.*
+- If a defect-related label already exists (e.g. `bug`, `defect`, `defect-scan`),
+  **propose using it** and confirm — prefer reusing the repo's own taxonomy.
+- Only if none fits, offer to create a `defect-scan` label via
+  `lib/detect.sh issues-ensure-label defect-scan` (best-effort; never blocks filing).
+
+*Priority label.* Carry each finding's severity through to a priority on the issue.
+- Look for an existing priority scheme in the label list — any shape: `P0`/`P1`/`P2`,
+  `priority: high`/`priority/high`, `critical`/`major`/`minor`, etc. If one exists,
+  **propose mapping into it** (don't invent a parallel scheme): tier+severity →
+  priority, e.g. High+critical → highest, High → high, Medium → medium.
+- If **no** priority labels exist, **offer to create** `P0`/`P1`/`P2` (confirm first;
+  `lib/detect.sh issues-ensure-label P0 …`), then apply. If the user declines, file
+  with the kind label only — priority is additive, never a blocker.
+- Pass both labels comma-joined to `issues-create` (e.g. `"defect-scan,P1"`).
+
+If the labels query is unavailable (exit 3), file without labels rather than guessing
+ones that may not exist (a missing label makes `gh issue create` fail).
+
+**Confirm the batch, then file.** Print the proposed issue titles (and the chosen
+label) and get a yes before writing — a `--full` pre-launch scan can surface many
+findings, and mass-filing spams the tracker. With `--dry-run`, print exactly what
+would be filed and stop. Otherwise, for each [NEW] finding:
+```
+# body built from report-format.md: file:line, category, severity, tier,
+# the evidence/adversarial-verification note, and the tool/pattern that flagged it.
+lib/detect.sh issues-create "<title>" "<body-file>" "<kind-label>[,<priority-label>]"
+```
+The helper prints the new issue URL. Capture it, re-tag the finding **[FILED #N]** in
+the final report, and summarize: *"Filed N issues: #.. #.. ; skipped M already-filed."*
 
 ### Fixing (only when --fix / --fix-all)
 - **Refuse if the working tree is dirty** (uncommitted changes) unless the user

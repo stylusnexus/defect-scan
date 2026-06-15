@@ -1,3 +1,6 @@
+---
+name: generic
+---
 # Profile: generic (fallback)
 
 ## Detection

@@ -1,25 +1,43 @@
 #!/usr/bin/env sh
 # detect.sh — deterministic plumbing for the defect-scan skill.
-# Subcommands: stacks <dir> | tool <name> [cwd] | scope [target] [--full] [cwd]
+# Subcommands: stacks|tool|scope|triage|issues|profiles|patterns
 set -eu
+
+# Absolute path to this skill dir (the dir containing lib/). Works via symlink.
+skill_dir() { CDPATH= cd -- "$(dirname -- "$0")/.." && pwd; }
+
+# fm_get <file> <key>: print the frontmatter value for <key>. Frontmatter is the
+# block between the first two '---' lines. Lists (comma/space) → space-separated.
+# Trailing '# comment' is stripped. Prints nothing if absent / no frontmatter.
+fm_get() {
+  awk -v k="$2" '
+    NR==1 && $0!="---" { exit }
+    NR==1 { next }
+    $0=="---" { exit }
+    {
+      i=index($0,":"); if (i==0) next
+      key=substr($0,1,i-1); val=substr($0,i+1)
+      sub(/[ \t]*#.*$/,"",val)
+      gsub(/^[ \t]+|[ \t]+$/,"",key); gsub(/^[ \t]+|[ \t]+$/,"",val)
+      gsub(/,/," ",val); gsub(/[ \t]+/," ",val)
+      gsub(/^ | $/,"",val)
+      if (key==k) { print val; exit }
+    }
+  ' "$1" 2>/dev/null
+}
 
 cmd_stacks() {
   root="${1:?usage: detect.sh stacks <dir>}"
-  found=""
-  # React/TypeScript: a package.json plus either a tsconfig or any .ts/.tsx file.
-  if [ -f "$root/package.json" ]; then
-    if [ -f "$root/tsconfig.json" ] || \
-       find "$root" -type f \( -name '*.ts' -o -name '*.tsx' \) 2>/dev/null | head -1 | grep -q .; then
-      found="$found react-typescript"
-    fi
-  fi
-  # Python: pyproject.toml, setup.py, or any .py file.
-  if [ -f "$root/pyproject.toml" ] || [ -f "$root/setup.py" ] || \
-     find "$root" -type f -name '*.py' 2>/dev/null | head -1 | grep -q .; then
-    found="$found python"
-  fi
-  [ -n "$found" ] || found="generic"
-  for p in $found; do echo "$p"; done
+  matched="$("$0" profiles "$root" | while IFS="$(printf '\t')" read -r name _ _; do
+    [ "$name" = "generic" ] && continue
+    df="$(fm_field "$name" detect_files "$root" 2>/dev/null || :)"
+    ext="$(fm_field "$name" extensions "$root" 2>/dev/null || :)"
+    m=""
+    for f in $df;  do [ -e "$root/$f" ] && m=1; done
+    for e in $ext; do find "$root" -type f -name "*.$e" 2>/dev/null | head -1 | grep -q . && m=1; done
+    [ -n "$m" ] && echo "$name"
+  done | sort -u)"
+  if [ -n "$matched" ]; then printf '%s\n' "$matched"; else echo "generic"; fi
 }
 cmd_tool() {
   name="${1:?usage: detect.sh tool <name> [cwd]}"
@@ -78,9 +96,44 @@ cmd_scope() {
   changed="$(git diff --name-only; git diff --cached --name-only; \
              git ls-files --others --exclude-standard)"
   if [ -z "$changed" ]; then
+    # Clean working tree: fall back to the last commit's net effect. For a normal
+    # --no-ff feature merge, HEAD~1 (first-parent diff) is exactly the merged work.
     changed="$(git diff --name-only HEAD~1 2>/dev/null || true)"
   fi
-  printf '%s\n' "$changed" | sort -u | sed '/^$/d'
+  if [ -z "$changed" ]; then
+    # HEAD~1 was empty too — the no-op back-merge case (HEAD's tree already equals
+    # its first parent's, the common post-merge/post-deploy state). Resolve the
+    # most recent NON-merge commit and diff it against its parent so the scan still
+    # has the last real change to chew on instead of dead-ending.
+    last="$(git rev-list --no-merges -1 HEAD 2>/dev/null || true)"
+    if [ -n "$last" ]; then
+      parent="$(git rev-parse --verify -q "${last}^" || true)"
+      if [ -n "$parent" ]; then
+        changed="$(git diff --name-only "$parent" "$last" 2>/dev/null || true)"
+      else
+        # Root commit (no parent): everything it introduced.
+        changed="$(git show --name-only --pretty=format: "$last" 2>/dev/null || true)"
+      fi
+    fi
+  fi
+  changed="$(printf '%s\n' "$changed" | sort -u | sed '/^$/d')"
+  if [ -z "$changed" ]; then
+    # Never dead-end silently — the agent must be able to tell "tool found nothing"
+    # from "tool couldn't resolve a scope."
+    echo "defect-scan: no uncommitted changes and no resolvable recent-commit diff (merge-only history?) — pass a <path> or use --full" >&2
+    return 0
+  fi
+  printf '%s\n' "$changed"
+}
+
+# Union of every discovered profile's extensions + an always-on base, space-sep.
+all_extensions() {
+  repo="${1:-$PWD}"
+  { echo "sh bash"
+    "$0" profiles "$repo" | while IFS="$(printf '\t')" read -r name _ _; do
+      fm_field "$name" extensions "$repo" || :
+    done
+  } | tr ' ' '\n' | sed '/^$/d' | sort -u | tr '\n' ' '
 }
 
 cmd_triage() {
@@ -100,14 +153,12 @@ cmd_triage() {
   #     (e.g. high-churn .md memory files) must not out-rank source. Non-existent
   #     paths with a source extension are kept (ranked loc=0) so callers can triage
   #     not-yet-written files.
+  exts=" $(all_extensions "$cwd") "
   while IFS= read -r f; do
     [ -n "$f" ] || continue
     [ -d "$f" ] && continue
-    case "$f" in
-      *.ts|*.tsx|*.js|*.jsx|*.mjs|*.cjs|*.py|*.pyi|*.go|*.rs|*.c|*.cc|*.cpp|*.cxx|\
-      *.h|*.hpp|*.hh|*.cs|*.java|*.rb|*.php|*.swift|*.kt|*.kts|*.scala|*.sh|*.bash) ;;
-      *) continue ;;
-    esac
+    e="${f##*.}"
+    case "$exts" in *" $e "*) : ;; *) continue ;; esac
     printf '%s\n' "$f"
   done | awk '
     NR==FNR {
@@ -144,15 +195,124 @@ cmd_issues() {
   printf '%s' "$out" | jq -r '.[] | "#\(.number)\t\(.state)\t\(.title)"'
 }
 
+# List the remote repo's existing label names (one per line). The SKILL reasons
+# over these to PROPOSE an existing defect-related label (bug/defect/…) rather than
+# assuming one or creating noise. Degrades cleanly (exit 3) when gh is missing or
+# the query fails. DEFECT_SCAN_GH overrides the binary (tests stay offline).
+cmd_labels() {
+  gh_bin="${DEFECT_SCAN_GH:-gh}"
+  command -v "$gh_bin" >/dev/null 2>&1 || {
+    echo "defect-scan: gh not available; cannot read labels" >&2; return 3; }
+  "$gh_bin" label list --limit "${DEFECT_SCAN_LABEL_LIMIT:-200}" --json name --jq '.[].name' 2>/dev/null || {
+    echo "defect-scan: label query failed (no remote / not authenticated)" >&2; return 3; }
+}
+
+# Ensure a label exists before filing. Best-effort: an "already exists" error is
+# fine (we only want it present), and a failure here must NEVER block filing — the
+# caller ignores the exit. Exit 3 if gh is unavailable. DEFECT_SCAN_GH overrides.
+# Usage: detect.sh issues-ensure-label <name> [color] [description]
+cmd_issues_ensure_label() {
+  [ $# -ge 1 ] || { echo "usage: detect.sh issues-ensure-label <name> [color] [desc]" >&2; return 2; }
+  gh_bin="${DEFECT_SCAN_GH:-gh}"
+  command -v "$gh_bin" >/dev/null 2>&1 || return 3
+  name="$1"; color="${2:-5319e7}"; desc="${3:-Filed by defect-scan}"
+  "$gh_bin" label create "$name" --color "$color" --description "$desc" >/dev/null 2>&1 || true
+}
+
+# File a tracker issue from a finding. OUTWARD-FACING and DEDUP-GATED: the SKILL
+# must call this ONLY for findings the correlation stage (cmd_issues) tagged [NEW],
+# and only after confirming the batch with the user (see SKILL Stage 4b). This
+# helper is the dumb create primitive — it does not itself dedupe; the dedupe gate
+# lives in the SKILL because it requires reasoning over search results, not string
+# matching. Prints the new issue URL on success. Degrades cleanly (exit 3) when gh
+# is missing/unauthenticated, like cmd_issues. DEFECT_SCAN_GH overrides the binary
+# (tests stay offline). Body is passed via file so multi-line content is safe.
+# Usage: detect.sh issues-create <title> <body-file> [comma,separated,labels]
+cmd_issues_create() {
+  [ $# -ge 2 ] || { echo "usage: detect.sh issues-create <title> <body-file> [comma,labels]" >&2; return 2; }
+  title="$1"; body_file="$2"; labels="${3:-}"
+  [ -f "$body_file" ] || { echo "defect-scan: body file not found: $body_file" >&2; return 2; }
+  gh_bin="${DEFECT_SCAN_GH:-gh}"
+  command -v "$gh_bin" >/dev/null 2>&1 || {
+    echo "defect-scan: gh not available; cannot file issue" >&2; return 3; }
+  if [ -n "$labels" ]; then set -- --label "$labels"; else set --; fi
+  "$gh_bin" issue create --title "$title" --body-file "$body_file" "$@" 2>/dev/null || {
+    echo "defect-scan: issue creation failed (no remote / not authenticated / label missing)" >&2; return 3; }
+}
+
+# fm_field <name> <key> [repo]: effective value for <key> of profile <name>,
+# taking the highest-precedence layer that DEFINES the key (field inheritance).
+fm_field() {
+  fname="$1"; fkey="$2"; repo="${3:-$PWD}"
+  # Reverse profile_layers output to get high→low precedence order.
+  hi="$(profile_layers "$repo" | awk '{a[NR]=$0} END{for(i=NR;i>=1;i--) print a[i]}')"
+  # Walk layers high→low; collect the first (highest-precedence) non-empty value.
+  # We avoid pipe-subshell `return` issues by reading into a variable via process
+  # substitution and breaking as soon as we have a value.
+  result=""
+  while IFS= read -r dir; do
+    [ -d "$dir" ] || continue
+    for f in "$dir"/*.md; do
+      [ -f "$f" ] || continue
+      n="$(fm_get "$f" name)"; [ -n "$n" ] || n="$(basename "$f" .md)"
+      [ "$n" = "$fname" ] || continue
+      v="$(fm_get "$f" "$fkey")"
+      if [ -n "$v" ]; then result="$v"; break 2; fi
+    done
+  done <<EOF
+$hi
+EOF
+  [ -n "$result" ] && printf '%s\n' "$result"
+}
+
+# Echo the enabled profile dirs, low→high precedence, one per line.
+profile_layers() {
+  repo="${1:-$PWD}"
+  echo "$(skill_dir)/profiles"                                   # builtin
+  [ -n "${DEFECT_SCAN_NO_USER:-}" ]    || echo "$HOME/.config/defect-scan/profiles"
+  [ -n "${DEFECT_SCAN_NO_PROJECT:-}" ] || echo "$repo/.defect-scan/profiles"
+}
+
+cmd_profiles() {
+  repo="${1:-$PWD}"
+  { profile_layers "$repo" | while IFS= read -r dir; do
+      case "$dir" in
+        "$repo/.defect-scan/"*) origin=project ;;
+        "$HOME/.config/"*) origin=user ;;
+        *) origin=builtin ;;
+      esac
+      [ -d "$dir" ] || continue
+      for f in "$dir"/*.md; do
+        [ -f "$f" ] || continue
+        name="$(fm_get "$f" name)"; [ -n "$name" ] || name="$(basename "$f" .md)"
+        printf '%s\t%s\t%s\n' "$name" "$f" "$origin"
+      done
+    done; } | awk -F'\t' '{m[$1]=$0} END{for(k in m) print m[k]}'
+}
+
+cmd_patterns() {
+  repo="${1:-$PWD}"
+  echo "$(skill_dir)/patterns/recurring.md"
+  [ -n "${DEFECT_SCAN_NO_USER:-}" ]    || for f in "$HOME/.config/defect-scan/patterns"/*.md; do [ -f "$f" ] && echo "$f"; done
+  [ -n "${DEFECT_SCAN_NO_PROJECT:-}" ] || for f in "$repo/.defect-scan/patterns"/*.md; do [ -f "$f" ] && echo "$f"; done
+}
+
 main() {
   sub="${1:-}"; [ $# -gt 0 ] && shift || true
   case "$sub" in
-    stacks)  cmd_stacks "$@" ;;
-    tool)    cmd_tool "$@" ;;
-    scope)   cmd_scope "$@" ;;
-    triage)  cmd_triage "$@" ;;
-    issues)  cmd_issues "$@" ;;
-    *) echo "usage: detect.sh {stacks|tool|scope|triage|issues} ..." >&2; return 2 ;;
+    stacks)    cmd_stacks "$@" ;;
+    tool)      cmd_tool "$@" ;;
+    scope)     cmd_scope "$@" ;;
+    triage)    cmd_triage "$@" ;;
+    issues)              cmd_issues "$@" ;;
+    issues-create)       cmd_issues_create "$@" ;;
+    issues-ensure-label) cmd_issues_ensure_label "$@" ;;
+    labels)              cmd_labels "$@" ;;
+    profiles)  cmd_profiles "$@" ;;
+    patterns)  cmd_patterns "$@" ;;
+    __fmget)   fm_get "$@" ;;
+    __fmfield) fm_field "$@" ;;
+    *) echo "usage: detect.sh {stacks|tool|scope|triage|issues|issues-create|issues-ensure-label|labels|profiles|patterns} ..." >&2; return 2 ;;
   esac
 }
 main "$@"

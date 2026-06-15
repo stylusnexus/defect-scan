@@ -1,3 +1,9 @@
+---
+name: react-typescript
+detect_files: tsconfig.json
+extensions: ts tsx
+tools: tsc eslint
+---
 # Profile: react-typescript
 
 ## Detection
@@ -18,12 +24,16 @@ Optional (deeper, run if installed):
 - `2` → **config/usage error (NOT clean)**. Mark the eslint check **inconclusive**
   in the report; never imply the files passed.
 
-**ESLint 9 flat-config gotcha:** passing explicit file paths can yield
-`No files matching the pattern` when those paths fall outside the flat config's
-`files`/`ignores` scope (this is exit 2, inconclusive — not clean). Fallbacks, in
-order: (1) lint the containing directory instead of individual files; (2) use the
-project's own entry (`npm run lint -- <files>` / `npx eslint <files>`); (3) if
-still exit 2, report eslint inconclusive and rely on the reasoning pass.
+**ESLint 9 flat-config gotcha:** passing explicit file paths to a flat-config
+project commonly breaks — two known exit-2 symptoms: `No files matching the
+pattern` (paths outside the config's `files`/`ignores` scope) **and** a hard
+`Oops! Something went wrong! :( ESLint: <ver>` internal crash. Treat **either** as
+"explicit-paths-unsupported here," not a verdict on the files. **Auto-apply** the
+fallbacks in order before reporting — don't stop at the first exit 2: (1) re-run
+against the containing directory instead of individual files (same scan, not
+inconclusive); (2) use the project's own entry (`npm run lint -- <files>` /
+`npx eslint <files>`); (3) only if all three still exit 2, report eslint
+inconclusive and rely on the reasoning pass.
 
 Install hints: `npm i -D typescript eslint`.
 
@@ -37,6 +47,9 @@ Baseline categories specialized:
   render, race between async effect and unmount.
 React-specific: missing `key` in lists, conditional hook calls, derived-state-in-
 effect anti-pattern, hydration mismatches (non-deterministic render output).
+Security headers (P10): check `next.config.*` `headers()` / middleware (or `helmet`)
+for CSP, HSTS, `X-Frame-Options`, `X-Content-Type-Options`; flag `unsafe-inline`/
+`unsafe-eval`/wildcard CSP sources and headers applied to only a subset of routes.
 Rules-of-hooks / purity (React 18/19) — recurs in real codebases, eslint
 `react-hooks/*` confirms many: `setState` inside an effect with no guard (render
 loop), impure calls during render (`performance.now`, `Date.now`, `Math.random`),

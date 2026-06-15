@@ -1,3 +1,9 @@
+---
+name: python
+detect_files: pyproject.toml setup.py
+extensions: py pyi
+tools: ruff mypy bandit pip-audit
+---
 # Profile: python
 
 ## Detection
@@ -25,6 +31,10 @@ Baseline categories specialized:
 - cat#5: shared state without locks, `asyncio` blocking calls, mutable default args.
 Python-specific: `==` vs `is` for identity, mutable default arguments,
 late-binding closures in loops, `assert` used for runtime validation.
+Security headers (P10), for web backends: check FastAPI/Starlette middleware,
+Django `SECURE_*` settings / `SecurityMiddleware`, or Flask `after_request` for
+CSP, HSTS, `X-Frame-Options`, `X-Content-Type-Options`; flag weak CSP directives
+(`unsafe-inline`/`unsafe-eval`/`*`) and headers missing on a subset of routes.
 
 ## Auto-fix-safe
 Only `ruff`-confirmed rules with an autofix (`ruff check --fix` applies them) AND

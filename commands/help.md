@@ -19,6 +19,11 @@ Language-aware defect hunter. Pipeline: **detect → triage → tool pass → re
 - `--fix-all` — also apply the medium tier (with confirmation)
 - `--lang <profile>` — force a profile (react-typescript | python | generic)
 - `--no-correlate` — skip GitHub-issue correlation (on by default when `gh` is present)
+- `--file-issues[=medium]` — file a GitHub issue per NEW finding (High only by default;
+  `=medium` includes Medium). Write action: needs `gh` auth, dedupes against existing
+  issues (requires correlation), reuses the repo's existing defect + priority labels
+  (offers to add P0/P1/P2 if none exist), and confirms the batch first. Pair with
+  `--dry-run` to preview without filing.
 
 ## What it uses
 - **Real analyzers if installed** (project-local first): `ruff`/`mypy`, `tsc`/`eslint`;
@@ -27,6 +32,10 @@ Language-aware defect hunter. Pipeline: **detect → triage → tool pass → re
 - **9 battle-tested patterns** (`patterns/recurring.md`) + per-language reasoning checklists.
 - **Confidence tiers**: High (tool-confirmed / adversarially verified) · Medium · Low.
 - **Tracker correlation**: tags findings NEW / LIKELY FILED #N / RELATED #N / VERIFY REGRESSION #N.
+- **Issue filing** (`--file-issues`, opt-in): files NEW findings, deduped against the
+  tracker, using the repo's existing defect labels — handy for a pre-launch sweep.
+- **Extensible:** add a language or defect pack by dropping files in `.defect-scan/`
+  — see `EXTENDING.md` (copy `profiles/TEMPLATE.md.example`, fill 4 fields).
 
 ## Optional pre-commit advisory (off by default)
 Set `DEFECT_SCAN_HOOK=1` to get a one-line, non-blocking advisory on changed files

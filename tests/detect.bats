@@ -78,6 +78,57 @@ setup() {
   [[ "$output" == *"f.txt"* && "$output" == *"g.txt"* ]]
 }
 
+@test "scope: normal --no-ff feature merge surfaces the merged files (HEAD~1 net effect)" {
+  repo="$BATS_TEST_TMPDIR/mergehead"
+  mkdir -p "$repo" && cd "$repo"
+  git init -qb main
+  echo base > base.txt && git add . && git -c user.email=t@t -c user.name=t commit -qm init
+  git checkout -qb feat
+  echo feature > feature.py && git add . && git -c user.email=t@t -c user.name=t commit -qm feat
+  git checkout -q main
+  git -c user.email=t@t -c user.name=t merge --no-ff -qm "merge feat" feat
+  # Working tree is clean; HEAD is the merge commit.
+  run "$DETECT" scope "" "" "$repo"
+  [ "$status" -eq 0 ]
+  [[ "${lines[0]}" == "MODE=changes" ]]
+  [[ "$output" == *"feature.py"* ]]
+}
+
+@test "scope: no-op back-merge (empty HEAD~1 diff) falls back to the last non-merge commit" {
+  repo="$BATS_TEST_TMPDIR/noopmerge"
+  mkdir -p "$repo" && cd "$repo"
+  git init -qb main
+  D1="2020-01-01T00:00:00"; D2="2020-01-02T00:00:00"
+  GIT_AUTHOR_DATE="$D1" GIT_COMMITTER_DATE="$D1" \
+    git -c user.email=t@t -c user.name=t commit -q --allow-empty -m base
+  echo base > base.txt && git add .
+  GIT_AUTHOR_DATE="$D1" GIT_COMMITTER_DATE="$D1" \
+    git -c user.email=t@t -c user.name=t commit -qm init
+  git checkout -qb feat
+  echo feature > feature.py && git add .
+  GIT_AUTHOR_DATE="$D2" GIT_COMMITTER_DATE="$D2" \
+    git -c user.email=t@t -c user.name=t commit -qm feat   # newest non-merge commit
+  git checkout -q main
+  # `-s ours` records the merge but KEEPS main's tree → HEAD~1 (first-parent) diff is empty.
+  GIT_AUTHOR_DATE="$D2" GIT_COMMITTER_DATE="$D2" \
+    git -c user.email=t@t -c user.name=t merge -s ours --no-ff -qm "no-op back-merge" feat
+  run "$DETECT" scope "" "" "$repo"
+  [ "$status" -eq 0 ]
+  [[ "${lines[0]}" == "MODE=changes" ]]
+  [[ "$output" == *"feature.py"* ]]   # resolved via last non-merge commit, not the empty HEAD~1 diff
+}
+
+@test "scope: never dead-ends silently on a clean tree (diagnostic to stderr)" {
+  repo="$BATS_TEST_TMPDIR/cleanquiet"
+  mkdir -p "$repo" && cd "$repo" && git init -q
+  # Empty commit so HEAD exists but introduces no files and has no resolvable diff.
+  git -c user.email=t@t -c user.name=t commit -q --allow-empty -m empty
+  run "$DETECT" scope "" "" "$repo"   # bats merges stderr into $output
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"defect-scan:"* ]]
+  [[ "$output" == *"--full"* ]]
+}
+
 @test "triage: ranks a security-named, churned file above a quiet plain file" {
   repo="$BATS_TEST_TMPDIR/triage"
   mkdir -p "$repo" && cd "$repo" && git init -q
@@ -115,7 +166,7 @@ setup() {
 }
 
 @test "every profile declares the four required sections in order" {
-  for p in generic python react-typescript; do
+  for p in generic python react-typescript dart; do
     f="$BATS_TEST_DIRNAME/../skills/scan/profiles/$p.md"
     [ -f "$f" ]
     grep -qE '^## Detection'           "$f"
@@ -190,10 +241,10 @@ setup() {
   [[ "$output" != *"notes.txt"* ]]
 }
 
-@test "patterns/recurring.md defines the battle-tested patterns P1-P9" {
+@test "patterns/recurring.md defines the battle-tested patterns P1-P10" {
   f="$BATS_TEST_DIRNAME/../skills/scan/patterns/recurring.md"
   [ -f "$f" ]
-  for p in P1 P2 P3 P4 P5 P6 P7 P8 P9; do grep -qE "^## $p" "$f"; done
+  for p in P1 P2 P3 P4 P5 P6 P7 P8 P9 P10; do grep -qE "^## $p" "$f"; done
 }
 
 @test "SKILL.md reasoning pass consults patterns/recurring.md" {
@@ -220,6 +271,100 @@ setup() {
   [ "$status" -eq 3 ]
   [[ "$output" == *"gh not available"* ]]
   [[ "$output" != *"#"* ]]             # no issue rows emitted to stdout
+}
+
+@test "issues-create: requires a title and a body file" {
+  run "$DETECT" issues-create "only a title"
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"usage:"* ]]
+}
+
+@test "issues-create: errors (exit 2) when the body file is missing" {
+  export DEFECT_SCAN_GH="$BATS_TEST_DIRNAME/fixtures/gh-stub/gh"
+  run "$DETECT" issues-create "a title" "/nonexistent/body.md"
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"body file not found"* ]]
+}
+
+@test "issues-create: files an issue and prints the new URL, passing title + labels through" {
+  export DEFECT_SCAN_GH="$BATS_TEST_DIRNAME/fixtures/gh-stub/gh"
+  export GH_STUB_LOG="$BATS_TEST_TMPDIR/ghlog"
+  body="$BATS_TEST_TMPDIR/body.md"; printf '## Defect\nsome details\n' > "$body"
+  run "$DETECT" issues-create "[High] auth.py:42 · cat#3 SQL injection" "$body" "defect-scan,bug"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"https://github.com/example/repo/issues/9999"* ]]   # URL for back-reference
+  log="$(cat "$GH_STUB_LOG")"
+  [[ "$log" == *"--label defect-scan,bug"* ]]                          # labels passed through
+  [[ "$log" == *"--title [High] auth.py:42 · cat#3 SQL injection"* ]]  # title passed through
+  [[ "$log" == *"--body-file"* ]]                                      # body passed via file
+}
+
+@test "issues-create: degrades cleanly (exit 3, no URL) when gh unavailable" {
+  export DEFECT_SCAN_GH="/nonexistent/gh-binary-xyz"
+  body="$BATS_TEST_TMPDIR/body2.md"; echo x > "$body"
+  run "$DETECT" issues-create "a title" "$body"
+  [ "$status" -eq 3 ]
+  [[ "$output" == *"gh not available"* ]]
+  [[ "$output" != *"http"* ]]          # nothing filed
+}
+
+@test "issues-ensure-label: best-effort create succeeds with the stub" {
+  export DEFECT_SCAN_GH="$BATS_TEST_DIRNAME/fixtures/gh-stub/gh"
+  run "$DETECT" issues-ensure-label defect-scan
+  [ "$status" -eq 0 ]
+}
+
+@test "issues-ensure-label: exit 3 when gh unavailable (caller treats as best-effort)" {
+  export DEFECT_SCAN_GH="/nonexistent/gh-binary-xyz"
+  run "$DETECT" issues-ensure-label defect-scan
+  [ "$status" -eq 3 ]
+}
+
+@test "issues-create: degrades cleanly with no-op set -- when no labels are given" {
+  export DEFECT_SCAN_GH="$BATS_TEST_DIRNAME/fixtures/gh-stub/gh"
+  export GH_STUB_LOG="$BATS_TEST_TMPDIR/ghlog-nolabel"
+  body="$BATS_TEST_TMPDIR/body3.md"; echo x > "$body"
+  run "$DETECT" issues-create "no-label title" "$body"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"issues/9999"* ]]
+  [[ "$(cat "$GH_STUB_LOG")" != *"--label"* ]]   # no --label flag emitted
+}
+
+@test "issues-create: carries a kind+priority label pair through (e.g. defect-scan,P1)" {
+  export DEFECT_SCAN_GH="$BATS_TEST_DIRNAME/fixtures/gh-stub/gh"
+  export GH_STUB_LOG="$BATS_TEST_TMPDIR/ghlog-prio"
+  body="$BATS_TEST_TMPDIR/bodyp.md"; echo x > "$body"
+  run "$DETECT" issues-create "[High] a finding" "$body" "defect-scan,P1"
+  [ "$status" -eq 0 ]
+  [[ "$(cat "$GH_STUB_LOG")" == *"--label defect-scan,P1"* ]]
+}
+
+@test "issues-ensure-label: creates a priority label (P0) best-effort" {
+  export DEFECT_SCAN_GH="$BATS_TEST_DIRNAME/fixtures/gh-stub/gh"
+  run "$DETECT" issues-ensure-label P0 b60205 "Highest priority"
+  [ "$status" -eq 0 ]
+}
+
+@test "labels: lists existing repo label names" {
+  export DEFECT_SCAN_GH="$BATS_TEST_DIRNAME/fixtures/gh-stub/gh"
+  run "$DETECT" labels
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"bug"* ]]
+  [[ "$output" == *"defect"* ]]      # a defect-related label the SKILL can propose
+}
+
+@test "labels: degrades cleanly (exit 3) when gh unavailable" {
+  export DEFECT_SCAN_GH="/nonexistent/gh-binary-xyz"
+  run "$DETECT" labels
+  [ "$status" -eq 3 ]
+  [[ "$output" == *"gh not available"* ]]
+}
+
+@test "detect.sh usage lists the issue-filing subcommands" {
+  run "$DETECT" bogus
+  [[ "$output" == *"issues-create"* ]]
+  [[ "$output" == *"issues-ensure-label"* ]]
+  [[ "$output" == *"labels"* ]]
 }
 
 @test "SKILL.md documents depth cap and correlation stage" {
@@ -274,4 +419,154 @@ setup() {
   [ -x "$s" ]
   sh -n "$s"
   grep -q "semgrep" "$s"; grep -q "gitleaks" "$s"
+}
+
+@test "stacks: detects dart from pubspec.yaml" {
+  run "$DETECT" stacks "$BATS_TEST_DIRNAME/fixtures/dart"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"dart"* ]]
+}
+
+@test "triage: ranks .dart files (source-filter includes dart)" {
+  repo="$BATS_TEST_TMPDIR/dartrepo"
+  mkdir -p "$repo" && cd "$repo" && git init -q
+  printf 'void main(){}\n' > main.dart && echo readme > README.md
+  git add . && git -c user.email=t@t -c user.name=t commit -qm init
+  run bash -c "printf 'main.dart\nREADME.md\n' | '$DETECT' triage '$repo'"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"main.dart"* ]]
+  [[ "$output" != *"README.md"* ]]
+}
+
+@test "fm_get: reads a scalar key" {
+  run "$DETECT" __fmget "$BATS_TEST_DIRNAME/fixtures/fm/sample.md" name
+  [ "$status" -eq 0 ]; [ "$output" = "dart" ]
+}
+@test "fm_get: normalizes comma/space lists to space-separated" {
+  run "$DETECT" __fmget "$BATS_TEST_DIRNAME/fixtures/fm/sample.md" extensions
+  [ "$output" = "dart flutter_gen" ]
+}
+@test "fm_get: strips trailing comments" {
+  run "$DETECT" __fmget "$BATS_TEST_DIRNAME/fixtures/fm/sample.md" tools
+  [ "$output" = "dart flutter" ]
+}
+@test "fm_get: empty for missing key or no frontmatter" {
+  run "$DETECT" __fmget "$BATS_TEST_DIRNAME/fixtures/fm/sample.md" nope
+  [ -z "$output" ]
+  run "$DETECT" __fmget "$BATS_TEST_DIRNAME/fixtures/empty/README.md" name
+  [ -z "$output" ]
+}
+
+@test "built-in profiles declare frontmatter (name + detection signals)" {
+  P="$BATS_TEST_DIRNAME/../skills/scan/profiles"
+  [ "$("$DETECT" __fmget "$P/generic.md" name)" = "generic" ]
+  [ "$("$DETECT" __fmget "$P/python.md" name)" = "python" ]
+  [[ "$("$DETECT" __fmget "$P/python.md" extensions)" == *"py"* ]]
+  [ "$("$DETECT" __fmget "$P/react-typescript.md" name)" = "react-typescript" ]
+  [[ "$("$DETECT" __fmget "$P/react-typescript.md" extensions)" == *"tsx"* ]]
+  [ "$("$DETECT" __fmget "$P/dart.md" name)" = "dart" ]
+  [[ "$("$DETECT" __fmget "$P/dart.md" detect_files)" == *"pubspec.yaml"* ]]
+}
+
+@test "profiles: lists built-ins with origin=builtin" {
+  run "$DETECT" profiles "$BATS_TEST_TMPDIR/none"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"dart"$'\t'* ]]
+  [[ "$output" == *"builtin"* ]]
+}
+
+@test "profiles: project layer shadows a same-named built-in" {
+  repo="$BATS_TEST_TMPDIR/proj"; mkdir -p "$repo/.defect-scan/profiles"
+  printf -- '---\nname: dart\nextensions: dart\n---\n' > "$repo/.defect-scan/profiles/dart.md"
+  run "$DETECT" profiles "$repo"
+  [ "$status" -eq 0 ]
+  [ "$(printf '%s\n' "$output" | awk -F'\t' '$1=="dart"' | wc -l | tr -d ' ')" -eq 1 ]
+  [[ "$(printf '%s\n' "$output" | awk -F'\t' '$1=="dart"{print $3}')" == "project" ]]
+}
+
+@test "profiles: --no-project (env) hides project layer" {
+  repo="$BATS_TEST_TMPDIR/proj2"; mkdir -p "$repo/.defect-scan/profiles"
+  printf -- '---\nname: zzlang\nextensions: zz\n---\n' > "$repo/.defect-scan/profiles/zzlang.md"
+  run env DEFECT_SCAN_NO_PROJECT=1 "$DETECT" profiles "$repo"
+  [[ "$output" != *"zzlang"* ]]
+}
+
+@test "fm_field: shadowing profile inherits an absent field from the shadowed one" {
+  repo="$BATS_TEST_TMPDIR/merge"; mkdir -p "$repo/.defect-scan/profiles"
+  printf -- '---\nname: dart\ntools: dart\n---\n## Detection\n' \
+    > "$repo/.defect-scan/profiles/dart.md"
+  run "$DETECT" __fmfield dart extensions "$repo"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"dart"* ]]
+}
+
+@test "fm_field: highest layer that defines the field wins" {
+  repo="$BATS_TEST_TMPDIR/merge2"; mkdir -p "$repo/.defect-scan/profiles"
+  printf -- '---\nname: python\nextensions: py pyi pyx\n---\n' \
+    > "$repo/.defect-scan/profiles/python.md"
+  run "$DETECT" __fmfield python extensions "$repo"
+  [[ "$output" == *"pyx"* ]]
+}
+
+@test "stacks: detects a profile with extensions-only (no detect_files)" {
+  repo="$BATS_TEST_TMPDIR/extonly"; mkdir -p "$repo/.defect-scan/profiles"
+  printf -- '---\nname: zz-lang\nextensions: zz\n---\n' > "$repo/.defect-scan/profiles/zz-lang.md"
+  : > "$repo/thing.zz"
+  run "$DETECT" stacks "$repo"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"zz-lang"* ]]
+}
+
+@test "stacks: zero-core-edit — a project profile teaches a new language" {
+  repo="$BATS_TEST_TMPDIR/toml"; mkdir -p "$repo/.defect-scan/profiles"
+  printf -- '---\nname: toml-lang\ndetect_files: foo.toml\nextensions: toml\n---\n' \
+    > "$repo/.defect-scan/profiles/toml-lang.md"
+  : > "$repo/foo.toml"
+  run "$DETECT" stacks "$repo"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"toml-lang"* ]]
+}
+
+@test "triage: zero-core-edit — a project profile's extension becomes scannable" {
+  repo="$BATS_TEST_TMPDIR/tomltriage"; mkdir -p "$repo/.defect-scan/profiles"
+  printf -- '---\nname: toml-lang\nextensions: toml\n---\n' \
+    > "$repo/.defect-scan/profiles/toml-lang.md"
+  cd "$repo" && git init -q
+  echo x > a.toml && echo y > b.md
+  git add -A && git -c user.email=t@t -c user.name=t commit -qm init
+  run bash -c "printf 'a.toml\nb.md\n' | '$DETECT' triage '$repo'"
+  [ "$status" -eq 0 ]
+  [ -n "$output" ]
+  [[ "$output" == *"a.toml"* ]]
+  [[ "$output" != *"b.md"* ]]
+}
+
+@test "patterns: lists built-in recurring.md plus a project pattern pack" {
+  repo="$BATS_TEST_TMPDIR/packs"; mkdir -p "$repo/.defect-scan/patterns"
+  printf '# P-custom — our billing rule\n' > "$repo/.defect-scan/patterns/custom.md"
+  run "$DETECT" patterns "$repo"
+  [ "$status" -eq 0 ]
+  [[ "${lines[0]}" == *"recurring.md" ]]
+  [[ "$output" == *".defect-scan/patterns/custom.md"* ]]
+}
+
+@test "detect.sh usage lists profiles and patterns subcommands" {
+  run "$DETECT" bogus
+  [[ "$output" == *"profiles"* ]]; [[ "$output" == *"patterns"* ]]
+}
+
+@test "SKILL.md documents origin-gated execution and layered profiles" {
+  f="$BATS_TEST_DIRNAME/../skills/scan/SKILL.md"
+  grep -qi "origin-gated\|origin=builtin\|CONFIRM" "$f"
+  grep -q "detect.sh patterns" "$f"
+  grep -q "DEFECT_SCAN_NO_PROJECT" "$f"
+}
+
+@test "extension docs exist: EXTENDING.md, template, help pointer" {
+  root="$BATS_TEST_DIRNAME/.."
+  [ -f "$root/EXTENDING.md" ]
+  [ -f "$root/skills/scan/profiles/TEMPLATE.md.example" ]
+  grep -q "EXTENDING.md" "$root/README.md"
+  grep -q "EXTENDING.md" "$root/commands/help.md"
+  grep -q "TEMPLATE.md.example" "$root/EXTENDING.md"
 }

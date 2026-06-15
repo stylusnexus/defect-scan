@@ -28,5 +28,6 @@ NEW when you couldn't check the tracker.
   fix:       <one-line suggested remedy>
 ```
 `<correlation>` is one of: `NEW`, `LIKELY FILED #N`, `RELATED #N`,
-`VERIFY REGRESSION #N` (closed match). Sorted High→Low, then by severity. Low tier
-goes under a `<details>`-style "Low-confidence appendix" heading.
+`VERIFY REGRESSION #N` (closed match), or `FILED #N` (just filed this run via
+`--file-issues`). Sorted High→Low, then by severity. Low tier goes under a
+`<details>`-style "Low-confidence appendix" heading.
