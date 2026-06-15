@@ -10,6 +10,18 @@ commit messages instead (`feat:`, `fix:`, `perf:`, `docs:` … show up; `chore:`
 are hidden by default). The release commit and this file are back-merged `main → dev`
 by the deploy flow so history stays aligned.
 
+## [1.5.0](https://github.com/stylusnexus/defect-scan/compare/v1.4.0...v1.5.0) (2026-06-15)
+
+
+### Features
+
+* **defect-scan:** add kotlin and swift profiles (mobile) ([#39](https://github.com/stylusnexus/defect-scan/issues/39)) ([bef67e5](https://github.com/stylusnexus/defect-scan/commit/bef67e5dc2f6c742f02750c4b5149b952c112fd6))
+* **defect-scan:** add php profile (PHPStan + Psalm taint + composer audit) ([#40](https://github.com/stylusnexus/defect-scan/issues/40)) ([ad86c19](https://github.com/stylusnexus/defect-scan/commit/ad86c195fc0780cd68a996c24570c63b5d5df8ab))
+* **defect-scan:** add rust profile (clippy + cargo-audit + cargo-deny) ([#38](https://github.com/stylusnexus/defect-scan/issues/38)) ([c19b40b](https://github.com/stylusnexus/defect-scan/commit/c19b40bd5a491cdf02505a835a8bbd33fd9bb700))
+* **defect-scan:** add yaml profile (yamllint + actionlint/zizmor/kube-linter) ([#37](https://github.com/stylusnexus/defect-scan/issues/37)) ([19c6431](https://github.com/stylusnexus/defect-scan/commit/19c6431b3732002c98567beb94464be86ff12bef))
+* **defect-scan:** add yaml, rust, kotlin, swift, php, and shell profiles ([d99d84e](https://github.com/stylusnexus/defect-scan/commit/d99d84e66bcdda04ea502b574ef9350acefe8777))
+* **defect-scan:** promote shell to a first-class profile (shellcheck) ([#41](https://github.com/stylusnexus/defect-scan/issues/41)) ([19f23e0](https://github.com/stylusnexus/defect-scan/commit/19f23e0f50f2e9300e282b0f3c8a65334d538285))
+
 ## [1.4.0](https://github.com/stylusnexus/defect-scan/compare/v1.3.0...v1.4.0) (2026-06-15)
 
 
