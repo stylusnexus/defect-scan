@@ -345,3 +345,20 @@ setup() {
   run env DEFECT_SCAN_NO_PROJECT=1 "$DETECT" profiles "$repo"
   [[ "$output" != *"zzlang"* ]]
 }
+
+@test "fm_field: shadowing profile inherits an absent field from the shadowed one" {
+  repo="$BATS_TEST_TMPDIR/merge"; mkdir -p "$repo/.defect-scan/profiles"
+  printf -- '---\nname: dart\ntools: dart\n---\n## Detection\n' \
+    > "$repo/.defect-scan/profiles/dart.md"
+  run "$DETECT" __fmfield dart extensions "$repo"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"dart"* ]]
+}
+
+@test "fm_field: highest layer that defines the field wins" {
+  repo="$BATS_TEST_TMPDIR/merge2"; mkdir -p "$repo/.defect-scan/profiles"
+  printf -- '---\nname: python\nextensions: py pyi pyx\n---\n' \
+    > "$repo/.defect-scan/profiles/python.md"
+  run "$DETECT" __fmfield python extensions "$repo"
+  [[ "$output" == *"pyx"* ]]
+}

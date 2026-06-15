@@ -172,6 +172,31 @@ cmd_issues() {
   printf '%s' "$out" | jq -r '.[] | "#\(.number)\t\(.state)\t\(.title)"'
 }
 
+# fm_field <name> <key> [repo]: effective value for <key> of profile <name>,
+# taking the highest-precedence layer that DEFINES the key (field inheritance).
+fm_field() {
+  fname="$1"; fkey="$2"; repo="${3:-$PWD}"
+  # Reverse profile_layers output to get high→low precedence order.
+  hi="$(profile_layers "$repo" | awk '{a[NR]=$0} END{for(i=NR;i>=1;i--) print a[i]}')"
+  # Walk layers high→low; collect the first (highest-precedence) non-empty value.
+  # We avoid pipe-subshell `return` issues by reading into a variable via process
+  # substitution and breaking as soon as we have a value.
+  result=""
+  while IFS= read -r dir; do
+    [ -d "$dir" ] || continue
+    for f in "$dir"/*.md; do
+      [ -f "$f" ] || continue
+      n="$(fm_get "$f" name)"; [ -n "$n" ] || n="$(basename "$f" .md)"
+      [ "$n" = "$fname" ] || continue
+      v="$(fm_get "$f" "$fkey")"
+      if [ -n "$v" ]; then result="$v"; break 2; fi
+    done
+  done <<EOF
+$hi
+EOF
+  [ -n "$result" ] && printf '%s\n' "$result"
+}
+
 # Echo the enabled profile dirs, low→high precedence, one per line.
 profile_layers() {
   repo="${1:-$PWD}"
@@ -207,6 +232,7 @@ main() {
     issues)    cmd_issues "$@" ;;
     profiles)  cmd_profiles "$@" ;;
     __fmget)   fm_get "$@" ;;
+    __fmfield) fm_field "$@" ;;
     *) echo "usage: detect.sh {stacks|tool|scope|triage|issues|profiles} ..." >&2; return 2 ;;
   esac
 }
