@@ -10,6 +10,19 @@ commit messages instead (`feat:`, `fix:`, `perf:`, `docs:` … show up; `chore:`
 are hidden by default). The release commit and this file are back-merged `main → dev`
 by the deploy flow so history stays aligned.
 
+## [1.3.0](https://github.com/stylusnexus/defect-scan/compare/v1.2.0...v1.3.0) (2026-06-15)
+
+
+### Features
+
+* **defect-scan:** --cross-model — second-opinion verification via Codex (refs [#7](https://github.com/stylusnexus/defect-scan/issues/7)) ([#17](https://github.com/stylusnexus/defect-scan/issues/17)) ([a240b74](https://github.com/stylusnexus/defect-scan/commit/a240b7447a0df0c286c12bfba5964df2ec06ed7c))
+* **defect-scan:** add ruby profile (RuboCop + Brakeman + bundler-audit) ([#22](https://github.com/stylusnexus/defect-scan/issues/22)) ([8d09323](https://github.com/stylusnexus/defect-scan/commit/8d093236e84caceda76b535766f2967264d1cd51))
+* **defect-scan:** Codex entrypoint — run the same scan under Codex (refs [#7](https://github.com/stylusnexus/defect-scan/issues/7)) ([#13](https://github.com/stylusnexus/defect-scan/issues/13)) ([1a238f5](https://github.com/stylusnexus/defect-scan/commit/1a238f520c129bb9c1b2e301ffaf0318169d6df8))
+* **defect-scan:** Codex support, cross-platform/Windows, eval harness, cross-model, react-ts + ruby profiles ([295d7bb](https://github.com/stylusnexus/defect-scan/commit/295d7bbf4eeb1d9d32ea64fa45ad7383657a56ee))
+* **defect-scan:** cross-platform hardening — BSD/GNU audit, preflight, Windows fallback ([#14](https://github.com/stylusnexus/defect-scan/issues/14)) ([36a113f](https://github.com/stylusnexus/defect-scan/commit/36a113f6b3afe0a42d5c3111e8df8895d6eec63c))
+* **defect-scan:** enrich react-typescript profile with researched defect classes ([#18](https://github.com/stylusnexus/defect-scan/issues/18)) ([6c7fe78](https://github.com/stylusnexus/defect-scan/commit/6c7fe78477ab97968278d8005011f1b6e82f269a))
+* **defect-scan:** per-language eval harness — measured, safe self-improvement (refs [#15](https://github.com/stylusnexus/defect-scan/issues/15)) ([#16](https://github.com/stylusnexus/defect-scan/issues/16)) ([86bcadd](https://github.com/stylusnexus/defect-scan/commit/86bcadd74df8edc0ad35242790f4a4d9d52dbd50))
+
 ## [1.2.0](https://github.com/stylusnexus/defect-scan/compare/v1.1.1...v1.2.0) (2026-06-15)
 
 
