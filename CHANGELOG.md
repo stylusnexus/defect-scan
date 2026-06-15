@@ -10,6 +10,16 @@ commit messages instead (`feat:`, `fix:`, `perf:`, `docs:` … show up; `chore:`
 are hidden by default). The release commit and this file are back-merged `main → dev`
 by the deploy flow so history stays aligned.
 
+## [1.4.0](https://github.com/stylusnexus/defect-scan/compare/v1.3.0...v1.4.0) (2026-06-15)
+
+
+### Features
+
+* **defect-scan:** add csharp/.NET profile (Roslyn CAxxxx + Security Code Scan + roslynator) ([#27](https://github.com/stylusnexus/defect-scan/issues/27)) ([4a1075b](https://github.com/stylusnexus/defect-scan/commit/4a1075bcd990141f0d4c4bf92b6e2eed8f506b6a))
+* **defect-scan:** add go profile (go vet + staticcheck + golangci-lint + govulncheck) ([#25](https://github.com/stylusnexus/defect-scan/issues/25)) ([be0c34b](https://github.com/stylusnexus/defect-scan/commit/be0c34b6ce42ab89c311995a8c4a56a93d76c90b))
+* **defect-scan:** add go, csharp, and java language profiles ([daaddf3](https://github.com/stylusnexus/defect-scan/commit/daaddf347fa6be8c258f052878c33ebeb170697d))
+* **defect-scan:** add java profile (Error Prone + SpotBugs/find-sec-bugs + PMD + dependency-check) ([#34](https://github.com/stylusnexus/defect-scan/issues/34)) ([8c7df7c](https://github.com/stylusnexus/defect-scan/commit/8c7df7c85947306e79eda2a80cfd6b68d348c99a))
+
 ## [1.3.0](https://github.com/stylusnexus/defect-scan/compare/v1.2.0...v1.3.0) (2026-06-15)
 
 
