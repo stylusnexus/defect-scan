@@ -311,3 +311,14 @@ setup() {
   run "$DETECT" __fmget "$BATS_TEST_DIRNAME/fixtures/empty/README.md" name
   [ -z "$output" ]
 }
+
+@test "built-in profiles declare frontmatter (name + detection signals)" {
+  P="$BATS_TEST_DIRNAME/../skills/scan/profiles"
+  [ "$("$DETECT" __fmget "$P/generic.md" name)" = "generic" ]
+  [ "$("$DETECT" __fmget "$P/python.md" name)" = "python" ]
+  [[ "$("$DETECT" __fmget "$P/python.md" extensions)" == *"py"* ]]
+  [ "$("$DETECT" __fmget "$P/react-typescript.md" name)" = "react-typescript" ]
+  [[ "$("$DETECT" __fmget "$P/react-typescript.md" extensions)" == *"tsx"* ]]
+  [ "$("$DETECT" __fmget "$P/dart.md" name)" = "dart" ]
+  [[ "$("$DETECT" __fmget "$P/dart.md" detect_files)" == *"pubspec.yaml"* ]]
+}
