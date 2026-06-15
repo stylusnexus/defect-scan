@@ -317,7 +317,7 @@ setup() {
 }
 
 @test "every profile declares the four required sections in order" {
-  for p in generic python react-typescript dart ruby go csharp java yaml rust; do
+  for p in generic python react-typescript dart ruby go csharp java yaml rust kotlin swift; do
     f="$BATS_TEST_DIRNAME/../skills/scan/profiles/$p.md"
     [ -f "$f" ]
     grep -qE '^## Detection'           "$f"
@@ -706,6 +706,50 @@ setup() {
   [[ "$output" == *"rust"* ]]
 }
 
+@test "stacks: detects kotlin from a .kt file" {
+  run "$DETECT" stacks "$BATS_TEST_DIRNAME/fixtures/kotlin"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"kotlin"* ]]
+}
+
+@test "stacks: detects swift from Package.swift" {
+  run "$DETECT" stacks "$BATS_TEST_DIRNAME/fixtures/swift"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"swift"* ]]
+}
+
+@test "eval: kotlin corpus scores a clean run 1.0 and has a near-miss" {
+  corpus="$BATS_TEST_DIRNAME/eval/kotlin/seen"
+  [ -s "$corpus/bug_double_bang.kt.expected" ]
+  [ -f "$corpus/clean_logged_rethrow.kt.expected" ] && [ ! -s "$corpus/clean_logged_rethrow.kt.expected" ]
+  f="$BATS_TEST_TMPDIR/kt"
+  {
+    echo "bug_double_bang.kt:2:cat#1"
+    echo "bug_swallowed.kt:4:cat#2"
+    echo "bug_global_scope.kt:3:cat#5"
+  } > "$f"
+  run "$DETECT" eval "$corpus" "$f"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"precision=1.00"* ]]
+  [[ "$output" == *"recall=1.00"* ]]
+}
+
+@test "eval: swift corpus scores a clean run 1.0 and has a near-miss" {
+  corpus="$BATS_TEST_DIRNAME/eval/swift/seen"
+  [ -s "$corpus/bug_force_unwrap.swift.expected" ]
+  [ -f "$corpus/clean_weak_self.swift.expected" ] && [ ! -s "$corpus/clean_weak_self.swift.expected" ]
+  f="$BATS_TEST_TMPDIR/sw"
+  {
+    echo "bug_force_unwrap.swift:2:cat#1"
+    echo "bug_try_bang.swift:3:cat#1"
+    echo "bug_retain_cycle.swift:4:cat#4"
+  } > "$f"
+  run "$DETECT" eval "$corpus" "$f"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"precision=1.00"* ]]
+  [[ "$output" == *"recall=1.00"* ]]
+}
+
 @test "eval: rust corpus scores a clean run 1.0 and has a near-miss" {
   corpus="$BATS_TEST_DIRNAME/eval/rust/seen"
   [ -s "$corpus/bug_unwrap.rs.expected" ]
@@ -778,6 +822,11 @@ setup() {
   [ "$("$DETECT" __fmget "$P/rust.md" name)" = "rust" ]
   [[ "$("$DETECT" __fmget "$P/rust.md" extensions)" == *"rs"* ]]
   [[ "$("$DETECT" __fmget "$P/rust.md" detect_files)" == *"Cargo.toml"* ]]
+  [ "$("$DETECT" __fmget "$P/kotlin.md" name)" = "kotlin" ]
+  [[ "$("$DETECT" __fmget "$P/kotlin.md" extensions)" == *"kt"* ]]
+  [ "$("$DETECT" __fmget "$P/swift.md" name)" = "swift" ]
+  [[ "$("$DETECT" __fmget "$P/swift.md" extensions)" == *"swift"* ]]
+  [[ "$("$DETECT" __fmget "$P/swift.md" detect_files)" == *"Package.swift"* ]]
 }
 
 @test "profiles: lists built-ins with origin=builtin" {
