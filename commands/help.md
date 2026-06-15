@@ -41,6 +41,10 @@ Language-aware defect hunter. Pipeline: **detect → triage → tool pass → re
 Set `DEFECT_SCAN_HOOK=1` to get a one-line, non-blocking advisory on changed files
 when committing. Run `/defect-scan:scan` for the full report.
 
+## Platforms
+macOS, Linux, and Windows (WSL/Git-Bash). Native PowerShell: use
+`windows/defect-scan.ps1`. Verify tooling with `detect.sh preflight`.
+
 ## Not the right tool when…
 - Debugging a *known* bug → use `systematic-debugging`.
 - Reviewing a diff/PR → use `/code-review`.

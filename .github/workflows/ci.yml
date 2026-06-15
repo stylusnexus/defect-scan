@@ -9,14 +9,33 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # Matrix proves portability across GNU (ubuntu) AND BSD (macOS) userlands — macOS
+    # ships BSD coreutils, so a GNU-only CI can be green while breaking on a user's Mac.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0   # full history so tests that build temp git repos behave
 
-      - name: Install bats + jq
+      - name: Install bats + jq (Linux)
+        if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y bats jq
+
+      - name: Install bats + jq (macOS)
+        if: runner.os == 'macOS'
+        run: brew install bats-core jq
+
+      - name: Report shell + tool identity (portability visibility)
+        run: |
+          sh --version 2>&1 | head -n 1 || true
+          echo "sed=$(command -v sed) awk=$(command -v awk) mktemp=$(command -v mktemp)"
+
+      - name: Preflight (required tools present)
+        run: sh skills/scan/lib/detect.sh preflight
 
       - name: Shell syntax check (POSIX sh)
         run: |
@@ -28,6 +47,25 @@ jobs:
 
       - name: Run test suite
         run: bats tests/detect.bats
+
+  powershell:
+    # Lint the Windows fallback shim so it can't rot. PSScriptAnalyzer catches the
+    # smells a parse-only check misses (automatic-variable shadowing, unapproved
+    # verbs, etc.). Native bats-on-Windows is a later step (Git-Bash matrix entry).
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint the Windows fallback shim (PSScriptAnalyzer)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not (Get-Module -ListAvailable PSScriptAnalyzer)) {
+            Install-Module PSScriptAnalyzer -Force -Scope CurrentUser
+          }
+          $r = Invoke-ScriptAnalyzer -Path windows/defect-scan.ps1 -Severity Warning,Error
+          $r | Format-Table -AutoSize
+          if ($r) { Write-Error "PSScriptAnalyzer found $($r.Count) issue(s)"; exit 1 }
+          Write-Host "windows/defect-scan.ps1: clean"
 
   secrets:
     runs-on: ubuntu-latest
