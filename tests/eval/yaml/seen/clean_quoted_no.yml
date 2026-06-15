@@ -1,0 +1,3 @@
+servers:
+  - name: prod
+    region: "no"    # NEAR-MISS: looks like the Norway bug, but quoted -> stays the string "no"

@@ -1,0 +1,3 @@
+servers:
+  - name: prod
+    enabled: no     # coerce: unquoted "no" -> boolean false (Norway problem), not the string

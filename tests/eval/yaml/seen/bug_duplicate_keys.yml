@@ -1,0 +1,4 @@
+config:
+  timeout: 30
+  retries: 3
+  timeout: 60     # cat#2: duplicate key silently overrides (timeout is now 60, no error)

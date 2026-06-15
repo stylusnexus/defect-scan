@@ -317,7 +317,7 @@ setup() {
 }
 
 @test "every profile declares the four required sections in order" {
-  for p in generic python react-typescript dart ruby go csharp java; do
+  for p in generic python react-typescript dart ruby go csharp java yaml rust kotlin swift php shell; do
     f="$BATS_TEST_DIRNAME/../skills/scan/profiles/$p.md"
     [ -f "$f" ]
     grep -qE '^## Detection'           "$f"
@@ -678,6 +678,145 @@ setup() {
   [[ "$output" == *"recall=1.00"* ]]
 }
 
+@test "stacks: detects yaml extension-only (empty detect_files)" {
+  run "$DETECT" stacks "$BATS_TEST_DIRNAME/fixtures/yaml"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"yaml"* ]]
+}
+
+@test "eval: yaml corpus scores a clean run 1.0 and has a near-miss" {
+  corpus="$BATS_TEST_DIRNAME/eval/yaml/seen"
+  [ -s "$corpus/bug_actions_injection.yml.expected" ]
+  [ -f "$corpus/clean_quoted_no.yml.expected" ] && [ ! -s "$corpus/clean_quoted_no.yml.expected" ]
+  f="$BATS_TEST_TMPDIR/yml"
+  {
+    echo "bug_actions_injection.yml:7:cat#3"
+    echo "bug_norway.yml:3:coerce"
+    echo "bug_duplicate_keys.yml:4:cat#2"
+  } > "$f"
+  run "$DETECT" eval "$corpus" "$f"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"precision=1.00"* ]]
+  [[ "$output" == *"recall=1.00"* ]]
+}
+
+@test "stacks: detects rust from Cargo.toml" {
+  run "$DETECT" stacks "$BATS_TEST_DIRNAME/fixtures/rust"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"rust"* ]]
+}
+
+@test "stacks: detects kotlin from a .kt file" {
+  run "$DETECT" stacks "$BATS_TEST_DIRNAME/fixtures/kotlin"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"kotlin"* ]]
+}
+
+@test "stacks: detects swift from Package.swift" {
+  run "$DETECT" stacks "$BATS_TEST_DIRNAME/fixtures/swift"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"swift"* ]]
+}
+
+@test "stacks: detects php from composer.json" {
+  run "$DETECT" stacks "$BATS_TEST_DIRNAME/fixtures/php"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"php"* ]]
+}
+
+@test "stacks: detects shell extension-only (empty detect_files)" {
+  run "$DETECT" stacks "$BATS_TEST_DIRNAME/fixtures/shell"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"shell"* ]]
+}
+
+@test "eval: shell corpus scores a clean run 1.0 and has a near-miss" {
+  corpus="$BATS_TEST_DIRNAME/eval/shell/seen"
+  [ -s "$corpus/bug_unquoted.sh.expected" ]
+  [ -f "$corpus/clean_cd_guard.sh.expected" ] && [ ! -s "$corpus/clean_cd_guard.sh.expected" ]
+  f="$BATS_TEST_TMPDIR/sh"
+  {
+    echo "bug_unquoted.sh:3:quoting"
+    echo "bug_cd_unchecked.sh:3:cat#2"
+    echo "bug_eval.sh:3:cat#3"
+  } > "$f"
+  run "$DETECT" eval "$corpus" "$f"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"precision=1.00"* ]]
+  [[ "$output" == *"recall=1.00"* ]]
+}
+
+@test "shellcheck flags the planted unquoted-var (SC2086) in the shell fixture" {
+  tool="$("$DETECT" tool shellcheck "$BATS_TEST_DIRNAME/fixtures/shell" || true)"
+  [ -n "$tool" ] || skip "shellcheck not installed"
+  run "$tool" -f gcc "$BATS_TEST_DIRNAME/eval/shell/seen/bug_unquoted.sh"
+  [[ "$output" == *"SC2086"* ]]
+}
+
+@test "eval: php corpus scores a clean run 1.0 and has a near-miss" {
+  corpus="$BATS_TEST_DIRNAME/eval/php/seen"
+  [ -s "$corpus/bug_sql_injection.php.expected" ]
+  [ -f "$corpus/clean_isset_guard.php.expected" ] && [ ! -s "$corpus/clean_isset_guard.php.expected" ]
+  f="$BATS_TEST_TMPDIR/php"
+  {
+    echo "bug_sql_injection.php:3:cat#3"
+    echo "bug_suppressed_error.php:3:cat#2"
+    echo "bug_undefined_key.php:3:cat#1"
+  } > "$f"
+  run "$DETECT" eval "$corpus" "$f"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"precision=1.00"* ]]
+  [[ "$output" == *"recall=1.00"* ]]
+}
+
+@test "eval: kotlin corpus scores a clean run 1.0 and has a near-miss" {
+  corpus="$BATS_TEST_DIRNAME/eval/kotlin/seen"
+  [ -s "$corpus/bug_double_bang.kt.expected" ]
+  [ -f "$corpus/clean_logged_rethrow.kt.expected" ] && [ ! -s "$corpus/clean_logged_rethrow.kt.expected" ]
+  f="$BATS_TEST_TMPDIR/kt"
+  {
+    echo "bug_double_bang.kt:2:cat#1"
+    echo "bug_swallowed.kt:4:cat#2"
+    echo "bug_global_scope.kt:3:cat#5"
+  } > "$f"
+  run "$DETECT" eval "$corpus" "$f"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"precision=1.00"* ]]
+  [[ "$output" == *"recall=1.00"* ]]
+}
+
+@test "eval: swift corpus scores a clean run 1.0 and has a near-miss" {
+  corpus="$BATS_TEST_DIRNAME/eval/swift/seen"
+  [ -s "$corpus/bug_force_unwrap.swift.expected" ]
+  [ -f "$corpus/clean_weak_self.swift.expected" ] && [ ! -s "$corpus/clean_weak_self.swift.expected" ]
+  f="$BATS_TEST_TMPDIR/sw"
+  {
+    echo "bug_force_unwrap.swift:2:cat#1"
+    echo "bug_try_bang.swift:3:cat#1"
+    echo "bug_retain_cycle.swift:4:cat#4"
+  } > "$f"
+  run "$DETECT" eval "$corpus" "$f"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"precision=1.00"* ]]
+  [[ "$output" == *"recall=1.00"* ]]
+}
+
+@test "eval: rust corpus scores a clean run 1.0 and has a near-miss" {
+  corpus="$BATS_TEST_DIRNAME/eval/rust/seen"
+  [ -s "$corpus/bug_unwrap.rs.expected" ]
+  [ -f "$corpus/clean_get_index.rs.expected" ] && [ ! -s "$corpus/clean_get_index.rs.expected" ]
+  f="$BATS_TEST_TMPDIR/rs"
+  {
+    echo "bug_unwrap.rs:3:panic"
+    echo "bug_sql_injection.rs:2:cat#3"
+    echo "bug_indexing.rs:2:cat#1"
+  } > "$f"
+  run "$DETECT" eval "$corpus" "$f"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"precision=1.00"* ]]
+  [[ "$output" == *"recall=1.00"* ]]
+}
+
 @test "triage: ranks .dart files (source-filter includes dart)" {
   repo="$BATS_TEST_TMPDIR/dartrepo"
   mkdir -p "$repo" && cd "$repo" && git init -q
@@ -729,6 +868,21 @@ setup() {
   [ "$("$DETECT" __fmget "$P/java.md" name)" = "java" ]
   [[ "$("$DETECT" __fmget "$P/java.md" extensions)" == *"java"* ]]
   [[ "$("$DETECT" __fmget "$P/java.md" detect_files)" == *"pom.xml"* ]]
+  [ "$("$DETECT" __fmget "$P/yaml.md" name)" = "yaml" ]
+  [[ "$("$DETECT" __fmget "$P/yaml.md" extensions)" == *"yaml"* ]]   # detect_files intentionally empty
+  [ "$("$DETECT" __fmget "$P/rust.md" name)" = "rust" ]
+  [[ "$("$DETECT" __fmget "$P/rust.md" extensions)" == *"rs"* ]]
+  [[ "$("$DETECT" __fmget "$P/rust.md" detect_files)" == *"Cargo.toml"* ]]
+  [ "$("$DETECT" __fmget "$P/kotlin.md" name)" = "kotlin" ]
+  [[ "$("$DETECT" __fmget "$P/kotlin.md" extensions)" == *"kt"* ]]
+  [ "$("$DETECT" __fmget "$P/swift.md" name)" = "swift" ]
+  [[ "$("$DETECT" __fmget "$P/swift.md" extensions)" == *"swift"* ]]
+  [[ "$("$DETECT" __fmget "$P/swift.md" detect_files)" == *"Package.swift"* ]]
+  [ "$("$DETECT" __fmget "$P/php.md" name)" = "php" ]
+  [[ "$("$DETECT" __fmget "$P/php.md" extensions)" == *"php"* ]]
+  [[ "$("$DETECT" __fmget "$P/php.md" detect_files)" == *"composer.json"* ]]
+  [ "$("$DETECT" __fmget "$P/shell.md" name)" = "shell" ]
+  [[ "$("$DETECT" __fmget "$P/shell.md" extensions)" == *"sh"* ]]   # detect_files intentionally empty
 }
 
 @test "profiles: lists built-ins with origin=builtin" {

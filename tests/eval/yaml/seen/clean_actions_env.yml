@@ -1,0 +1,9 @@
+name: ci
+on: [issues]
+jobs:
+  comment:
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          TITLE: ${{ github.event.issue.title }}
+        run: echo "Title: $TITLE"   # correct: untrusted value via env var, not interpolated into the script
