@@ -583,7 +583,7 @@ cmd_eval_gaps() {
   echo "eval-gaps $lang/$split:"
   printf '%s\n' "$exp_counts" | while read -r cnt cat; do
     [ -n "$cat" ] || continue
-    found="$(printf '%s\n' "$det" | grep -c ":$cat\$" 2>/dev/null || true)"
+    found="$(printf '%s\n' "$det" | awk -F: -v c="$cat" '$NF==c{n++} END{print n+0}')"
     if [ "${found:-0}" -eq 0 ]; then
       echo "  GAP: $cat — $cnt expected, 0 detected"
     elif [ "$found" -lt "$cnt" ]; then
@@ -605,7 +605,7 @@ eval_clean_fp() {
     [ -f "$exp" ] || continue
     [ -s "$exp" ] && continue
     base="$(basename "$exp" .expected)"
-    if grep -q "^$base:" "$f" 2>/dev/null || grep -q "/$base:" "$f" 2>/dev/null; then
+    if awk -F: -v b="$base" '{p=$1; sub(/.*\//,"",p); if(p==b){found=1}} END{exit !found}' "$f"; then
       return 0
     fi
   done

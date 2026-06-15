@@ -7,6 +7,10 @@
 #   missing   -> emit NO block (protocol error)
 #   dup       -> emit two blocks (protocol error)
 #   malformed -> emit a block with a bad line (protocol error)
+#   bugonly   -> emit a finding ONLY for names containing the literal marker "BUG";
+#                empty block otherwise (lets a clean, dotted-name fixture whose name
+#                is a regex variant of the buggy one — e.g. "x.UGy" vs "xBUGy" — coexist
+#                with a detected buggy fixture without itself being detected)
 # DEFECT_SCAN_STUB_FINDING = "<line>:<category>" appended after the basename (mode=ok).
 set -eu
 fixture="${1:?stub: need fixture path}"
@@ -26,6 +30,11 @@ case "$mode" in
     case "$fixture" in
       */seen/*) printf '<<<EVAL\n%s:%s\nEVAL>>>\n' "$base" "$finding" ;;
       *)        printf '<<<EVAL\nEVAL>>>\n' ;;   # held-out: find nothing
+    esac ;;
+  bugonly)
+    case "$base" in
+      *BUG*) printf '<<<EVAL\n%s:%s\nEVAL>>>\n' "$base" "$finding" ;;
+      *)     printf '<<<EVAL\nEVAL>>>\n' ;;
     esac ;;
   missing)   : ;;                          # no block at all
   dup)       printf '<<<EVAL\n%s:%s\nEVAL>>>\n<<<EVAL\nEVAL>>>\n' "$base" "$finding" ;;

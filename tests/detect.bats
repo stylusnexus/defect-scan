@@ -298,6 +298,42 @@ EOF
   [[ "$output" == *"0 detected"* ]] || [[ "$output" == *"GAP"* ]]
 }
 
+@test "eval_clean_fp matches basenames exactly (no regex-dot false positive)" {
+  c="$BATS_TEST_TMPDIR/c"; mkdir -p "$c/foo/seen"
+  # Buggy fixture (contains literal marker BUG) -> detected under bugonly mode,
+  # emitting finding line "xBUGy:1:cat#2".
+  printf 'x\n' > "$c/foo/seen/xBUGy"; printf '1:cat#2\n' > "$c/foo/seen/xBUGy.expected"
+  # CLEAN fixture (empty .expected). Its basename AS A REGEX ("x.UGy") matches the
+  # detected line "xBUGy:..." — but as a literal it does not, and bugonly does not
+  # detect it (no literal BUG). The buggy regex must therefore NOT register a clean-FP.
+  printf 'x\n' > "$c/foo/seen/x.UGy"; : > "$c/foo/seen/x.UGy.expected"
+  DEFECT_SCAN_EVAL_CORPUS="$c" \
+  DEFECT_SCAN_EVAL_RUNNER="$BATS_TEST_DIRNAME/fixtures/eval-runner-stub" \
+  DEFECT_SCAN_STUB_MODE=bugonly DEFECT_SCAN_STUB_FINDING="1:cat#2" \
+    run "$DETECT" eval-run foo --runs 1
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"clean_fp_runs=0"* ]]
+}
+
+@test "eval-gaps category match is exact (no regex-dot cross-match)" {
+  c="$BATS_TEST_TMPDIR/c"; mkdir -p "$c/foo/seen"
+  printf 'x\n' > "$c/foo/seen/bug_a.ext"; printf '3:a.c\n' > "$c/foo/seen/bug_a.ext.expected"  # category literally "a.c"
+  cat > "$c/foo/.last-run.seen.txt" <<'EOF'
+runs=1
+mean_precision=1.00
+stddev_precision=0.00
+mean_recall=0.00
+stddev_recall=0.00
+clean_fp_runs=0
+@findings
+bug_a.ext:3:axc
+EOF
+  # detected category is "axc", expected is "a.c" — these must NOT match (regex-dot would)
+  DEFECT_SCAN_EVAL_CORPUS="$c" run "$DETECT" eval-gaps foo
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"GAP: a.c"* ]] || [[ "$output" == *"a.c — 1 expected, 0 detected"* ]]
+}
+
 @test "codex-verify: requires a prompt file" {
   run "$DETECT" codex-verify
   [ "$status" -eq 2 ]
