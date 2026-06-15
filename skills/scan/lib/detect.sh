@@ -3,6 +3,29 @@
 # Subcommands: stacks <dir> | tool <name> [cwd] | scope [target] [--full] [cwd]
 set -eu
 
+# Absolute path to this skill dir (the dir containing lib/). Works via symlink.
+skill_dir() { CDPATH= cd -- "$(dirname -- "$0")/.." && pwd; }
+
+# fm_get <file> <key>: print the frontmatter value for <key>. Frontmatter is the
+# block between the first two '---' lines. Lists (comma/space) → space-separated.
+# Trailing '# comment' is stripped. Prints nothing if absent / no frontmatter.
+fm_get() {
+  awk -v k="$2" '
+    NR==1 && $0!="---" { exit }
+    NR==1 { next }
+    $0=="---" { exit }
+    {
+      i=index($0,":"); if (i==0) next
+      key=substr($0,1,i-1); val=substr($0,i+1)
+      sub(/[ \t]*#.*$/,"",val)
+      gsub(/^[ \t]+|[ \t]+$/,"",key); gsub(/^[ \t]+|[ \t]+$/,"",val)
+      gsub(/,/," ",val); gsub(/[ \t]+/," ",val)
+      gsub(/^ | $/,"",val)
+      if (key==k) { print val; exit }
+    }
+  ' "$1" 2>/dev/null
+}
+
 cmd_stacks() {
   root="${1:?usage: detect.sh stacks <dir>}"
   found=""
@@ -152,11 +175,12 @@ cmd_issues() {
 main() {
   sub="${1:-}"; [ $# -gt 0 ] && shift || true
   case "$sub" in
-    stacks)  cmd_stacks "$@" ;;
-    tool)    cmd_tool "$@" ;;
-    scope)   cmd_scope "$@" ;;
-    triage)  cmd_triage "$@" ;;
-    issues)  cmd_issues "$@" ;;
+    stacks)   cmd_stacks "$@" ;;
+    tool)     cmd_tool "$@" ;;
+    scope)    cmd_scope "$@" ;;
+    triage)   cmd_triage "$@" ;;
+    issues)   cmd_issues "$@" ;;
+    __fmget)  fm_get "$@" ;;
     *) echo "usage: detect.sh {stacks|tool|scope|triage|issues} ..." >&2; return 2 ;;
   esac
 }

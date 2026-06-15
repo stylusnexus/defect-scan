@@ -292,3 +292,22 @@ setup() {
   [[ "$output" == *"main.dart"* ]]
   [[ "$output" != *"README.md"* ]]
 }
+
+@test "fm_get: reads a scalar key" {
+  run "$DETECT" __fmget "$BATS_TEST_DIRNAME/fixtures/fm/sample.md" name
+  [ "$status" -eq 0 ]; [ "$output" = "dart" ]
+}
+@test "fm_get: normalizes comma/space lists to space-separated" {
+  run "$DETECT" __fmget "$BATS_TEST_DIRNAME/fixtures/fm/sample.md" extensions
+  [ "$output" = "dart flutter_gen" ]
+}
+@test "fm_get: strips trailing comments" {
+  run "$DETECT" __fmget "$BATS_TEST_DIRNAME/fixtures/fm/sample.md" tools
+  [ "$output" = "dart flutter" ]
+}
+@test "fm_get: empty for missing key or no frontmatter" {
+  run "$DETECT" __fmget "$BATS_TEST_DIRNAME/fixtures/fm/sample.md" nope
+  [ -z "$output" ]
+  run "$DETECT" __fmget "$BATS_TEST_DIRNAME/fixtures/empty/README.md" name
+  [ -z "$output" ]
+}
