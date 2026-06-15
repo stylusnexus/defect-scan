@@ -10,6 +10,36 @@ setup() {
   [[ "$output" == *"usage:"* ]]
 }
 
+@test "preflight: passes when core tools are present (lists usage)" {
+  run "$DETECT" preflight
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"OK"* ]]
+}
+
+@test "preflight: fails with a clear message when a core tool is missing" {
+  # Simulate an unsupported environment: a PATH with none of the core tools.
+  # Invoke sh by absolute path so `env` can still find the shell; only the in-script
+  # `command -v <tool>` lookups fail (empty PATH).
+  empty="$BATS_TEST_TMPDIR/emptybin"; mkdir -p "$empty"
+  run env PATH="$empty" /bin/sh "$DETECT" preflight
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"MISSING core tools"* ]]
+  [[ "$output" == *"WSL or Git-Bash"* ]]
+}
+
+@test "usage lists the preflight subcommand" {
+  run "$DETECT" bogus
+  [[ "$output" == *"preflight"* ]]
+}
+
+@test "windows fallback: PowerShell shim exists and delegates to the shared engine" {
+  f="$BATS_TEST_DIRNAME/../windows/defect-scan.ps1"
+  [ -f "$f" ]
+  grep -q "detect.sh" "$f"          # delegates to the one engine, no reimplementation
+  grep -qi "bash" "$f"              # locates a POSIX shell
+  [ -f "$BATS_TEST_DIRNAME/../windows/README.md" ]
+}
+
 @test "stacks: detects react-typescript from package.json + tsconfig" {
   run "$DETECT" stacks "$BATS_TEST_DIRNAME/fixtures/react-ts"
   [ "$status" -eq 0 ]

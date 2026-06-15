@@ -34,7 +34,7 @@ cmd_stacks() {
     ext="$(fm_field "$name" extensions "$root" 2>/dev/null || :)"
     m=""
     for f in $df;  do [ -e "$root/$f" ] && m=1; done
-    for e in $ext; do find "$root" -type f -name "*.$e" 2>/dev/null | head -1 | grep -q . && m=1; done
+    for e in $ext; do find "$root" -type f -name "*.$e" 2>/dev/null | head -n 1 | grep -q . && m=1; done
     [ -n "$m" ] && echo "$name"
   done | sort -u)"
   if [ -n "$matched" ]; then printf '%s\n' "$matched"; else echo "generic"; fi
@@ -297,9 +297,31 @@ cmd_patterns() {
   [ -n "${DEFECT_SCAN_NO_PROJECT:-}" ] || for f in "$repo/.defect-scan/patterns"/*.md; do [ -f "$f" ] && echo "$f"; done
 }
 
+# preflight: verify the external tools detect.sh depends on are present, so users on
+# an unsupported shell/platform get a clear, actionable message instead of a cryptic
+# awk/git failure mid-scan. Core tools are required; jq/gh are optional (correlation
+# + issue filing). Exits non-zero if any core tool is missing.
+cmd_preflight() {
+  core="git awk sed grep find sort head tr mktemp"
+  missing=""
+  for t in $core; do command -v "$t" >/dev/null 2>&1 || missing="$missing $t"; done
+  if [ -n "$missing" ]; then
+    echo "defect-scan preflight: MISSING core tools:$missing" >&2
+    echo "  defect-scan needs a POSIX shell + coreutils. On Windows use WSL or Git-Bash" >&2
+    echo "  (native PowerShell: run via windows/defect-scan.ps1, which delegates to Git-Bash)." >&2
+    return 1
+  fi
+  for t in jq gh; do
+    command -v "$t" >/dev/null 2>&1 || \
+      echo "defect-scan preflight: optional '$t' not found — needed for issue correlation/filing" >&2
+  done
+  echo "defect-scan preflight: OK — core tools present"
+}
+
 main() {
   sub="${1:-}"; [ $# -gt 0 ] && shift || true
   case "$sub" in
+    preflight) cmd_preflight "$@" ;;
     stacks)    cmd_stacks "$@" ;;
     tool)      cmd_tool "$@" ;;
     scope)     cmd_scope "$@" ;;
@@ -312,7 +334,7 @@ main() {
     patterns)  cmd_patterns "$@" ;;
     __fmget)   fm_get "$@" ;;
     __fmfield) fm_field "$@" ;;
-    *) echo "usage: detect.sh {stacks|tool|scope|triage|issues|issues-create|issues-ensure-label|labels|profiles|patterns} ..." >&2; return 2 ;;
+    *) echo "usage: detect.sh {preflight|stacks|tool|scope|triage|issues|issues-create|issues-ensure-label|labels|profiles|patterns} ..." >&2; return 2 ;;
   esac
 }
 main "$@"

@@ -37,6 +37,14 @@ defect-scan also runs under the [Codex CLI](https://github.com/openai/codex) —
 scan logic, profiles, and patterns are shared; only the entrypoint differs. See
 [`codex/README.md`](./codex/README.md) to install the Codex prompt.
 
+## Supported platforms
+The engine is one POSIX-sh library, so it runs on **macOS** (BSD userland), **Linux**
+(GNU userland), and **Windows via WSL or Git-Bash**. CI runs the suite on both Ubuntu
+and macOS to catch BSD-vs-GNU regressions. **Native PowerShell** users get a fallback
+shim (`windows/defect-scan.ps1`) that delegates to the bash bundled with Git for
+Windows — see [`windows/README.md`](./windows/README.md). Check your environment with
+`detect.sh preflight` (verifies git/awk/sed/grep/jq… are present).
+
 ## Optional analyzers (richer coverage, all degrade-gracefully)
 The scan runs whatever's installed and skips the rest with an install hint:
 - **`semgrep`** — multi-language taint (injection, subprocess, SQL) — highest-value add

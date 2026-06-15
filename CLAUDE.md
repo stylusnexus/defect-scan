@@ -92,6 +92,13 @@ class the scan flags); don't let the scanner become the vector.
   single-pass churn tally in `cmd_triage` (per-file `git log` was deliberately
   avoided; 16k files = 16k processes). When editing it, preserve that O(history)-once
   property and the BSD-awk `getline`-on-a-directory guard.
+- **Cross-platform: macOS (BSD), Linux (GNU), Windows (WSL/Git-Bash).** CI runs the
+  bats suite on ubuntu **and** macos — BSD-vs-GNU divergence (e.g. `sed -i`, `head -1`
+  vs `-n 1`, `wc` whitespace, awk dialects) is the trap (GNU-green CI can break a Mac).
+  `detect.sh preflight` checks required tools. Native Windows has no PowerShell
+  re-implementation by design (every subcommand needs `git`, and Git-for-Windows
+  bundles `bash`); `windows/defect-scan.ps1` is a thin shim that delegates to that
+  bash — keep it a delegator, never a second engine to avoid drift.
 - **Frontmatter is parsed by `fm_get`** (a small awk reader), not a YAML lib. Stick
   to the supported shape: scalar keys, comma/space lists normalized to
   space-separated, trailing `# comments` stripped. The block is between the first
