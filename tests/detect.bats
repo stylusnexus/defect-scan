@@ -317,7 +317,7 @@ setup() {
 }
 
 @test "every profile declares the four required sections in order" {
-  for p in generic python react-typescript dart ruby go csharp java yaml rust kotlin swift; do
+  for p in generic python react-typescript dart ruby go csharp java yaml rust kotlin swift php; do
     f="$BATS_TEST_DIRNAME/../skills/scan/profiles/$p.md"
     [ -f "$f" ]
     grep -qE '^## Detection'           "$f"
@@ -718,6 +718,28 @@ setup() {
   [[ "$output" == *"swift"* ]]
 }
 
+@test "stacks: detects php from composer.json" {
+  run "$DETECT" stacks "$BATS_TEST_DIRNAME/fixtures/php"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"php"* ]]
+}
+
+@test "eval: php corpus scores a clean run 1.0 and has a near-miss" {
+  corpus="$BATS_TEST_DIRNAME/eval/php/seen"
+  [ -s "$corpus/bug_sql_injection.php.expected" ]
+  [ -f "$corpus/clean_isset_guard.php.expected" ] && [ ! -s "$corpus/clean_isset_guard.php.expected" ]
+  f="$BATS_TEST_TMPDIR/php"
+  {
+    echo "bug_sql_injection.php:3:cat#3"
+    echo "bug_suppressed_error.php:3:cat#2"
+    echo "bug_undefined_key.php:3:cat#1"
+  } > "$f"
+  run "$DETECT" eval "$corpus" "$f"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"precision=1.00"* ]]
+  [[ "$output" == *"recall=1.00"* ]]
+}
+
 @test "eval: kotlin corpus scores a clean run 1.0 and has a near-miss" {
   corpus="$BATS_TEST_DIRNAME/eval/kotlin/seen"
   [ -s "$corpus/bug_double_bang.kt.expected" ]
@@ -827,6 +849,9 @@ setup() {
   [ "$("$DETECT" __fmget "$P/swift.md" name)" = "swift" ]
   [[ "$("$DETECT" __fmget "$P/swift.md" extensions)" == *"swift"* ]]
   [[ "$("$DETECT" __fmget "$P/swift.md" detect_files)" == *"Package.swift"* ]]
+  [ "$("$DETECT" __fmget "$P/php.md" name)" = "php" ]
+  [[ "$("$DETECT" __fmget "$P/php.md" extensions)" == *"php"* ]]
+  [[ "$("$DETECT" __fmget "$P/php.md" detect_files)" == *"composer.json"* ]]
 }
 
 @test "profiles: lists built-ins with origin=builtin" {
