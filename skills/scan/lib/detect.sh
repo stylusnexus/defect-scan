@@ -297,12 +297,63 @@ cmd_patterns() {
   [ -n "${DEFECT_SCAN_NO_PROJECT:-}" ] || for f in "$repo/.defect-scan/patterns"/*.md; do [ -f "$f" ] && echo "$f"; done
 }
 
+# eval <corpus-dir> <findings-file>: model-FREE scorer for the per-language eval.
+# This is the un-gameable grader — it deliberately contains NO model, so the thing
+# that judges "did a profile change improve the scan" is a deterministic, testable
+# artifact separate from the markdown the model reads.
+#
+# Inputs:
+#   <corpus-dir>      a dir of fixtures, each with a sibling "<fixture>.expected"
+#                     sidecar. Each sidecar line is "<line>:<category>" (e.g.
+#                     "12:cat#4"); an EMPTY sidecar means the fixture must produce
+#                     ZERO findings (a clean fixture — the false-positive tripwire).
+#   <findings-file>   lines of "<path>:<line>:<category>" from a scan of the corpus.
+# Keys are matched by fixture BASENAME:line:category, so score one corpus dir at a
+# time. Prints: precision recall tp fp fn  (precision-first: a finding on a clean
+# fixture is an FP; precision drops — that is the regression signal).
+cmd_eval() {
+  dir="${1:?usage: detect.sh eval <corpus-dir> <findings-file>}"
+  findings="${2:?usage: detect.sh eval <corpus-dir> <findings-file>}"
+  [ -d "$dir" ]      || { echo "eval: corpus dir not found: $dir" >&2; return 2; }
+  [ -f "$findings" ] || { echo "eval: findings file not found: $findings" >&2; return 2; }
+  exp="$(mktemp 2>/dev/null || echo "/tmp/ds-eval-exp.$$")"
+  act="$(mktemp 2>/dev/null || echo "/tmp/ds-eval-act.$$")"
+  # Expected set: prefix each "<line>:<cat>" with its fixture basename.
+  for f in "$dir"/*.expected; do
+    [ -f "$f" ] || continue
+    base="$(basename "$f" .expected)"
+    # `|| [ -n "$ln" ]` so a final line with no trailing newline is still processed —
+    # a grader must not silently drop the last finding.
+    while IFS= read -r ln || [ -n "$ln" ]; do
+      [ -n "$ln" ] || continue
+      case "$ln" in \#*) continue ;; esac
+      printf '%s:%s\n' "$base" "$ln"
+    done < "$f"
+  done | sort -u > "$exp"
+  # Actual set: normalize each finding's path to its basename so it matches.
+  while IFS= read -r ln || [ -n "$ln" ]; do
+    [ -n "$ln" ] || continue
+    case "$ln" in \#*) continue ;; esac
+    p="${ln%%:*}"; rest="${ln#*:}"
+    printf '%s:%s\n' "$(basename "$p")" "$rest"
+  done < "$findings" | sort -u > "$act"
+  tp=$(comm -12 "$exp" "$act" | grep -c . || true)
+  fp=$(comm -13 "$exp" "$act" | grep -c . || true)
+  fn=$(comm -23 "$exp" "$act" | grep -c . || true)
+  rm -f "$exp" "$act"
+  awk -v tp="$tp" -v fp="$fp" -v fn="$fn" 'BEGIN{
+    p = (tp+fp)>0 ? tp/(tp+fp) : 1
+    r = (tp+fn)>0 ? tp/(tp+fn) : 1
+    printf "precision=%.2f recall=%.2f tp=%d fp=%d fn=%d\n", p, r, tp, fp, fn
+  }'
+}
+
 # preflight: verify the external tools detect.sh depends on are present, so users on
 # an unsupported shell/platform get a clear, actionable message instead of a cryptic
 # awk/git failure mid-scan. Core tools are required; jq/gh are optional (correlation
 # + issue filing). Exits non-zero if any core tool is missing.
 cmd_preflight() {
-  core="git awk sed grep find sort head tr mktemp"
+  core="git awk sed grep find sort head tr mktemp comm"
   missing=""
   for t in $core; do command -v "$t" >/dev/null 2>&1 || missing="$missing $t"; done
   if [ -n "$missing" ]; then
@@ -322,6 +373,7 @@ main() {
   sub="${1:-}"; [ $# -gt 0 ] && shift || true
   case "$sub" in
     preflight) cmd_preflight "$@" ;;
+    eval)      cmd_eval "$@" ;;
     stacks)    cmd_stacks "$@" ;;
     tool)      cmd_tool "$@" ;;
     scope)     cmd_scope "$@" ;;
@@ -334,7 +386,7 @@ main() {
     patterns)  cmd_patterns "$@" ;;
     __fmget)   fm_get "$@" ;;
     __fmfield) fm_field "$@" ;;
-    *) echo "usage: detect.sh {preflight|stacks|tool|scope|triage|issues|issues-create|issues-ensure-label|labels|profiles|patterns} ..." >&2; return 2 ;;
+    *) echo "usage: detect.sh {preflight|eval|stacks|tool|scope|triage|issues|issues-create|issues-ensure-label|labels|profiles|patterns} ..." >&2; return 2 ;;
   esac
 }
 main "$@"

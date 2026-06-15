@@ -58,6 +58,13 @@ confidence tiers, adversarial verification) lives in the markdown and is done by
 the model. Do not push reasoning into `detect.sh`, and do not re-implement in prose
 what a `detect.sh` subcommand already provides.
 
+**Self-improvement is measured, not learned.** `tests/eval/<lang>/` is a labeled
+fixture corpus; `detect.sh eval <corpus-dir> <findings-file>` is a **model-free**
+grader (precision/recall/tp/fp/fn). Improvement happens only via human-reviewed PRs
+that add fixtures/checks and must not regress the eval — there is deliberately **no
+runtime learning store** (that would be the P4 prompt-injection surface). The grader
++ corpus are CODEOWNERS-protected so a PR can't silently weaken them. See issue #15.
+
 **Five stages** (`SKILL.md` is the orchestrator): detect → triage → tool pass →
 reasoning pass → report (→ fix). `--depth N` (default 20) caps how many triaged
 files get the expensive reasoning pass — this is the "rabbit-hole floor"; the rest

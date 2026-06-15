@@ -180,6 +180,23 @@ Recurring, cross-language defect patterns live in `skills/scan/patterns/recurrin
 `P1 P2 …` assertion list in `tests/detect.bats`. Org- or repo-specific patterns
 belong in a drop-in pattern pack instead (see EXTENDING.md) — not in the built-ins.
 
+## The eval corpus (measuring scan quality)
+
+`tests/eval/<lang>/` is a labeled fixture corpus that measures whether a profile or
+pattern change makes the scanner better or just noisier. The grader is model-free:
+
+```sh
+detect.sh eval tests/eval/python/seen <findings-file>   # → precision/recall/tp/fp/fn
+```
+
+When you sharpen a profile, add a fixture that captures the case — a buggy file with a
+`<line>:<category>` `.expected` sidecar, or a **clean** file with an empty sidecar (a
+false-positive tripwire; include near-miss clean fixtures). When a real bug escapes,
+add a **synthetic, minimized** reproduction (never proprietary code or secrets — this
+is a public repo). The grader and corpus are CODEOWNERS-protected so a PR can't
+silently weaken them. Full detail: [`tests/eval/README.md`](./tests/eval/README.md)
+and issue #15.
+
 ## Pull requests
 
 Open PRs against `dev`. The PR template's checklist mirrors what reviewers (and CI)
