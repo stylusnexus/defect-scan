@@ -1,0 +1,25 @@
+{
+  "name": "defect-scan",
+  "version": "1.5.0",
+  "description": "Language-aware defect hunter: detect stack → triage → run real analyzers → reason with battle-tested patterns → report (confidence-tiered, tracker-correlated) → fix.",
+  "author": {
+    "name": "Stylus Nexus",
+    "email": "evemcgivern@gmail.com"
+  },
+  "homepage": "https://github.com/stylusnexus/defect-scan",
+  "repository": "https://github.com/stylusnexus/defect-scan",
+  "license": "MIT",
+  "keywords": [
+    "defect-scan",
+    "static-analysis",
+    "code-review",
+    "security",
+    "agent-skill"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Defect Scan",
+    "shortDescription": "Language-aware latent-defect hunter for 14 languages.",
+    "category": "developer-tools"
+  }
+}

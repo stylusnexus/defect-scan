@@ -546,6 +546,17 @@ setup() {
   [ -x "$root/skills/scan/lib/detect.sh" ]
 }
 
+@test "codex plugin manifest: display name is 'Defect Scan', name is the slug, version in sync" {
+  root="$BATS_TEST_DIRNAME/.."
+  [ -f "$root/.codex-plugin/plugin.json" ]
+  [ "$(jq -r '.name' "$root/.codex-plugin/plugin.json")" = "defect-scan" ]           # install/invocation slug unchanged
+  [ "$(jq -r '.interface.displayName' "$root/.codex-plugin/plugin.json")" = "Defect Scan" ]  # human display name
+  # version must match the claude manifest — release-please bumps both; this guards the drift
+  cv="$(jq -r '.version' "$root/.codex-plugin/plugin.json")"
+  clv="$(jq -r '.version' "$root/.claude-plugin/plugin.json")"
+  [ "$cv" = "$clv" ]
+}
+
 @test "hook: no-op (exit 0, silent) when DEFECT_SCAN_HOOK is unset" {
   run env -u DEFECT_SCAN_HOOK sh "$BATS_TEST_DIRNAME/../hooks/pre-commit-scan.sh" <<< '{"tool_input":{"command":"git commit -m x"}}'
   [ "$status" -eq 0 ]
