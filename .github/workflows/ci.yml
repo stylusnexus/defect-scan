@@ -1,0 +1,47 @@
+name: CI
+
+# Gate every PR and push to dev/main on the same checks a contributor runs locally:
+# POSIX-shell syntax + the bats suite (the repo has no build step — bats IS the gate).
+on:
+  pull_request:
+  push:
+    branches: [dev, main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history so tests that build temp git repos behave
+
+      - name: Install bats + jq
+        run: sudo apt-get update && sudo apt-get install -y bats jq
+
+      - name: Shell syntax check (POSIX sh)
+        run: |
+          for f in skills/scan/lib/detect.sh hooks/pre-commit-scan.sh \
+                   scripts/setup-optional-tools.sh tests/fixtures/gh-stub/gh \
+                   install.sh; do
+            echo "sh -n $f"; sh -n "$f"
+          done
+
+      - name: Run test suite
+        run: bats tests/detect.bats
+
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history so the scan covers every commit
+      # Run the gitleaks CLI directly rather than gitleaks-action — the Action
+      # requires a paid license for organization repos; the binary does not.
+      - name: Install gitleaks
+        run: |
+          VERSION=8.30.1
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz" \
+            | tar -xz gitleaks
+          sudo mv gitleaks /usr/local/bin/
+      - name: gitleaks (full-history secret scan)
+        run: gitleaks detect --source . --redact --no-banner

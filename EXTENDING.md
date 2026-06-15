@@ -2,6 +2,14 @@
 
 Add a language or your own defect rules **without editing core** — just drop files.
 
+> **Which guide do I want?**
+> - **This file** — extend defect-scan *privately*, for your own repo or machine, by
+>   dropping files in `.defect-scan/` or `~/.config/defect-scan/`. No PR, no core edits.
+> - **[CONTRIBUTING.md](./CONTRIBUTING.md)** — contribute a language/pattern *back* so
+>   it ships as a built-in for everyone (add it under `skills/scan/`, wire tests, PR).
+>
+> The private path below is the right choice unless the language is broadly useful.
+
 ## Add a language (3 steps)
 1. **Pick where it lives:**
    - Team-wide (committed with the repo): `.defect-scan/profiles/<name>.md`
@@ -46,6 +54,23 @@ Scan a Ruby repo → it's detected, `.rb` files are triaged, RuboCop runs.
 Drop `.md` files in `.defect-scan/patterns/` (team) or
 `~/.config/defect-scan/patterns/` (personal). The reasoning pass reads them
 alongside the built-in P1–P10 — encode your org's recurring bugs.
+
+## Tweak a built-in profile for just your repo
+You don't have to fork core to adjust a shipped profile. Create a drop-in with the
+**same `name`** and set only the field(s) you want to change — everything you omit is
+inherited from the built-in (field-by-field shadow-merge). Example: add one Python
+reasoning rule and a house extension without losing the rest of the `python` profile:
+```markdown
+---
+name: python
+extensions: py pyi pyx        # adds .pyx; inherits tools/detect_files from built-in
+---
+# Profile: python
+## Reasoning checklist
+- house rule: flag `print(` left in shipped modules.
+```
+For changes that belong to *everyone*, enhance the built-in instead — see
+[CONTRIBUTING.md](./CONTRIBUTING.md) ("Enhancing an existing language profile").
 
 ## Precedence & inheritance
 Project (`.defect-scan/`) overrides user (`~/.config/defect-scan/`) overrides
