@@ -372,3 +372,17 @@ setup() {
   [ "$status" -eq 0 ]
   [[ "$output" == *"toml-lang"* ]]
 }
+
+@test "triage: zero-core-edit — a project profile's extension becomes scannable" {
+  repo="$BATS_TEST_TMPDIR/tomltriage"; mkdir -p "$repo/.defect-scan/profiles"
+  printf -- '---\nname: toml-lang\nextensions: toml\n---\n' \
+    > "$repo/.defect-scan/profiles/toml-lang.md"
+  cd "$repo" && git init -q
+  echo x > a.toml && echo y > b.md
+  git add -A && git -c user.email=t@t -c user.name=t commit -qm init
+  run bash -c "printf 'a.toml\nb.md\n' | '$DETECT' triage '$repo'"
+  [ "$status" -eq 0 ]
+  [ -n "$output" ]
+  [[ "$output" == *"a.toml"* ]]
+  [[ "$output" != *"b.md"* ]]
+}

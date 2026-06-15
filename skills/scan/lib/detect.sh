@@ -101,6 +101,16 @@ cmd_scope() {
   printf '%s\n' "$changed" | sort -u | sed '/^$/d'
 }
 
+# Union of every discovered profile's extensions + an always-on base, space-sep.
+all_extensions() {
+  repo="${1:-$PWD}"
+  { echo "sh bash"
+    "$0" profiles "$repo" | while IFS="$(printf '\t')" read -r name _ _; do
+      fm_field "$name" extensions "$repo" || :
+    done
+  } | tr ' ' '\n' | sed '/^$/d' | sort -u | tr '\n' ' '
+}
+
 cmd_triage() {
   cwd="${1:-$PWD}"
   cd "$cwd" || return 1
@@ -118,14 +128,12 @@ cmd_triage() {
   #     (e.g. high-churn .md memory files) must not out-rank source. Non-existent
   #     paths with a source extension are kept (ranked loc=0) so callers can triage
   #     not-yet-written files.
+  exts=" $(all_extensions "$cwd") "
   while IFS= read -r f; do
     [ -n "$f" ] || continue
     [ -d "$f" ] && continue
-    case "$f" in
-      *.ts|*.tsx|*.js|*.jsx|*.mjs|*.cjs|*.py|*.pyi|*.go|*.rs|*.c|*.cc|*.cpp|*.cxx|\
-      *.h|*.hpp|*.hh|*.cs|*.java|*.rb|*.php|*.swift|*.kt|*.kts|*.scala|*.dart|*.sh|*.bash) ;;
-      *) continue ;;
-    esac
+    e="${f##*.}"
+    case "$exts" in *" $e "*) : ;; *) continue ;; esac
     printf '%s\n' "$f"
   done | awk '
     NR==FNR {
