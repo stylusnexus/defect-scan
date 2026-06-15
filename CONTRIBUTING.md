@@ -123,7 +123,7 @@ signal (e.g. `tests/fixtures/ruby/Gemfile`) and a small source file. Look at
 The suite hardcodes the built-in profile list in a few places — update **all** of
 them in `tests/detect.bats` (search for `dart` to find them quickly):
 
-- the **four-sections** test — add your name to `for p in generic python react-typescript dart`
+- the **four-sections** test — add your name to the `for p in generic python react-typescript dart ruby …` list
 - the **frontmatter** test — add an assertion for your profile's `name`/signals
 - add a **detection** test for your fixture, e.g.:
   ```bash
