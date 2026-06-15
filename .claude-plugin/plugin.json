@@ -4,5 +4,15 @@
   "version": "1.5.0",
   "author": {
     "name": "Stylus Nexus"
-  }
+  },
+  "homepage": "https://github.com/stylusnexus/defect-scan",
+  "repository": "https://github.com/stylusnexus/defect-scan",
+  "license": "MIT",
+  "keywords": [
+    "defect-scan",
+    "static-analysis",
+    "code-review",
+    "security",
+    "agent-skill"
+  ]
 }
