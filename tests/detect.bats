@@ -596,6 +596,22 @@ setup() {
   [[ "$output" == *"ruby"* ]]
 }
 
+@test "eval: dart corpus scores a clean run 1.0 and has a near-miss" {
+  corpus="$BATS_TEST_DIRNAME/eval/dart/seen"
+  [ -s "$corpus/bug_context_async.dart.expected" ]
+  [ -f "$corpus/clean_mounted_check.dart.expected" ] && [ ! -s "$corpus/clean_mounted_check.dart.expected" ]
+  f="$BATS_TEST_TMPDIR/dart"
+  {
+    echo "bug_context_async.dart:4:cat#5"
+    echo "bug_undisposed_controller.dart:3:cat#4"
+    echo "bug_empty_catch.dart:3:cat#2"
+  } > "$f"
+  run "$DETECT" eval "$corpus" "$f"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"precision=1.00"* ]]
+  [[ "$output" == *"recall=1.00"* ]]
+}
+
 @test "eval: ruby corpus scores a clean run 1.0 and has a near-miss" {
   corpus="$BATS_TEST_DIRNAME/eval/ruby/seen"
   [ -s "$corpus/bug_bare_rescue.rb.expected" ]
