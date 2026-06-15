@@ -18,6 +18,11 @@ cmd_stacks() {
      find "$root" -type f -name '*.py' 2>/dev/null | head -1 | grep -q .; then
     found="$found python"
   fi
+  # Dart/Flutter: pubspec.yaml or any .dart file.
+  if [ -f "$root/pubspec.yaml" ] || \
+     find "$root" -type f -name '*.dart' 2>/dev/null | head -1 | grep -q .; then
+    found="$found dart"
+  fi
   [ -n "$found" ] || found="generic"
   for p in $found; do echo "$p"; done
 }
@@ -105,7 +110,7 @@ cmd_triage() {
     [ -d "$f" ] && continue
     case "$f" in
       *.ts|*.tsx|*.js|*.jsx|*.mjs|*.cjs|*.py|*.pyi|*.go|*.rs|*.c|*.cc|*.cpp|*.cxx|\
-      *.h|*.hpp|*.hh|*.cs|*.java|*.rb|*.php|*.swift|*.kt|*.kts|*.scala|*.sh|*.bash) ;;
+      *.h|*.hpp|*.hh|*.cs|*.java|*.rb|*.php|*.swift|*.kt|*.kts|*.scala|*.dart|*.sh|*.bash) ;;
       *) continue ;;
     esac
     printf '%s\n' "$f"

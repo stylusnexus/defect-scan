@@ -115,7 +115,7 @@ setup() {
 }
 
 @test "every profile declares the four required sections in order" {
-  for p in generic python react-typescript; do
+  for p in generic python react-typescript dart; do
     f="$BATS_TEST_DIRNAME/../skills/scan/profiles/$p.md"
     [ -f "$f" ]
     grep -qE '^## Detection'           "$f"
@@ -274,4 +274,21 @@ setup() {
   [ -x "$s" ]
   sh -n "$s"
   grep -q "semgrep" "$s"; grep -q "gitleaks" "$s"
+}
+
+@test "stacks: detects dart from pubspec.yaml" {
+  run "$DETECT" stacks "$BATS_TEST_DIRNAME/fixtures/dart"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"dart"* ]]
+}
+
+@test "triage: ranks .dart files (source-filter includes dart)" {
+  repo="$BATS_TEST_TMPDIR/dartrepo"
+  mkdir -p "$repo" && cd "$repo" && git init -q
+  printf 'void main(){}\n' > main.dart && echo readme > README.md
+  git add . && git -c user.email=t@t -c user.name=t commit -qm init
+  run bash -c "printf 'main.dart\nREADME.md\n' | '$DETECT' triage '$repo'"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"main.dart"* ]]
+  [[ "$output" != *"README.md"* ]]
 }
