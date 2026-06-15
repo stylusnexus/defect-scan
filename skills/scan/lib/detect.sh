@@ -96,9 +96,34 @@ cmd_scope() {
   changed="$(git diff --name-only; git diff --cached --name-only; \
              git ls-files --others --exclude-standard)"
   if [ -z "$changed" ]; then
+    # Clean working tree: fall back to the last commit's net effect. For a normal
+    # --no-ff feature merge, HEAD~1 (first-parent diff) is exactly the merged work.
     changed="$(git diff --name-only HEAD~1 2>/dev/null || true)"
   fi
-  printf '%s\n' "$changed" | sort -u | sed '/^$/d'
+  if [ -z "$changed" ]; then
+    # HEAD~1 was empty too — the no-op back-merge case (HEAD's tree already equals
+    # its first parent's, the common post-merge/post-deploy state). Resolve the
+    # most recent NON-merge commit and diff it against its parent so the scan still
+    # has the last real change to chew on instead of dead-ending.
+    last="$(git rev-list --no-merges -1 HEAD 2>/dev/null || true)"
+    if [ -n "$last" ]; then
+      parent="$(git rev-parse --verify -q "${last}^" || true)"
+      if [ -n "$parent" ]; then
+        changed="$(git diff --name-only "$parent" "$last" 2>/dev/null || true)"
+      else
+        # Root commit (no parent): everything it introduced.
+        changed="$(git show --name-only --pretty=format: "$last" 2>/dev/null || true)"
+      fi
+    fi
+  fi
+  changed="$(printf '%s\n' "$changed" | sort -u | sed '/^$/d')"
+  if [ -z "$changed" ]; then
+    # Never dead-end silently — the agent must be able to tell "tool found nothing"
+    # from "tool couldn't resolve a scope."
+    echo "defect-scan: no uncommitted changes and no resolvable recent-commit diff (merge-only history?) — pass a <path> or use --full" >&2
+    return 0
+  fi
+  printf '%s\n' "$changed"
 }
 
 # Union of every discovered profile's extensions + an always-on base, space-sep.
