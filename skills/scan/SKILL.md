@@ -256,6 +256,11 @@ the final report, and summarize: *"Filed N issues: #.. #.. ; skipped M already-f
 - Never auto-fix type-checker findings or behavior-changing lint rules
   (`exhaustive-deps`, bare-except→named). List them for the human.
 
+### Eval mode (harness only)
+**Eval mode (harness only).** When invoked by the eval harness, additionally follow
+`eval-mode.md` to append the machine-readable `<<<EVAL>>>` findings block. Normal scans
+never emit it.
+
 ## Handing off
 Heavy remediation is not this skill's job — once defects are reported, point the
 user to `systematic-debugging` (root-cause a specific one) or

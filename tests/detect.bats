@@ -1231,3 +1231,12 @@ EOF
   grep -q "EXTENDING.md" "$root/commands/help.md"
   grep -q "TEMPLATE.md.example" "$root/EXTENDING.md"
 }
+
+@test "eval-mode contract exists and both drivers reference it" {
+  root="$BATS_TEST_DIRNAME/.."
+  [ -f "$root/skills/scan/eval-mode.md" ]
+  grep -q "<<<EVAL" "$root/skills/scan/eval-mode.md"
+  grep -q "EVAL>>>" "$root/skills/scan/eval-mode.md"
+  grep -q "eval-mode" "$root/skills/scan/SKILL.md"
+  grep -q "eval-mode" "$root/codex/defect-scan.md"
+}
