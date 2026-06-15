@@ -546,6 +546,59 @@ setup() {
   [ -x "$root/skills/scan/lib/detect.sh" ]
 }
 
+@test "gitleaks baseline config exists and allowlists node_modules + the supabase-demo JWT" {
+  f="$BATS_TEST_DIRNAME/../skills/scan/gitleaks-baseline.toml"
+  [ -f "$f" ]
+  grep -q "node_modules" "$f"                       # path allowlist
+  grep -q "eyJpc3MiOiJzdXBhYmFzZS1kZW1v" "$f"       # supabase-demo JWT issuer-prefix allowlist
+}
+
+@test "SKILL.md gitleaks guidance uses git-mode + triage (not the noisy --no-git)" {
+  f="$BATS_TEST_DIRNAME/../skills/scan/SKILL.md"
+  grep -q "gitleaks git" "$f"
+  grep -q "gitleaks-baseline.toml" "$f"
+  ! grep -q "gitleaks detect --no-git" "$f"         # the old firehose invocation is gone
+  grep -qi "committed" "$f"
+}
+
+@test "gitleaks: baseline suppresses demo keys + node_modules but keeps a real committed secret" {
+  command -v gitleaks >/dev/null 2>&1 || skip "gitleaks not installed"
+  base="$BATS_TEST_DIRNAME/../skills/scan/gitleaks-baseline.toml"
+  repo="$BATS_TEST_TMPDIR/glrepo"; mkdir -p "$repo/node_modules/p" "$repo/.github/workflows"; cd "$repo"
+  git init -q
+  # Assembled from fragments so the contiguous AWS-key token isn't in this committed
+  # file (GitHub push-protection + our own CI secrets scan would otherwise reject it);
+  # gitleaks sees the full value in the throwaway repo at runtime.
+  ak="AKIA""Z7Q2A9B8C7D6E5F4"
+  printf 'aws_key = "%s"\n' "$ak" > real.tf                                          # real secret (flagged)
+  printf 'aws_key = "%s"\n' "$ak" > node_modules/p/leak.js                           # same secret, path-allowlisted
+  printf 'KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24ifQ.x\n' \
+    > .github/workflows/ci.yml                                                        # demo JWT (allowlisted)
+  git add -A && git -c user.email=t@t -c user.name=t commit -qm init
+  gitleaks git -c "$base" --no-banner --report-format json --report-path out.json . >/dev/null 2>&1 || true
+  # exactly one finding, and it's the real secret — not the demo key or node_modules
+  [ "$(jq 'length' out.json)" -eq 1 ]
+  [ "$(jq -r '.[0].File' out.json)" = "real.tf" ]
+}
+
+@test "gitleaks: baseline does NOT over-suppress — a real secret under examples/ still fires" {
+  command -v gitleaks >/dev/null 2>&1 || skip "gitleaks not installed"
+  base="$BATS_TEST_DIRNAME/../skills/scan/gitleaks-baseline.toml"
+  repo="$BATS_TEST_TMPDIR/glrepo2"; mkdir -p "$repo/examples/demo"; cd "$repo"
+  git init -q
+  # A real, unambiguous Stripe-format secret committed under examples/ — must still be
+  # flagged (examples/ is a known leak vector; the baseline must not blanket-allowlist
+  # it). Assembled from fragments so the literal token isn't in this committed file
+  # (GitHub push-protection would otherwise reject this test); gitleaks sees the full
+  # value in the throwaway repo at runtime.
+  sk="sk_""live_""4eC39HqLyjWDarjtT1zdp7dcABCDEFGH"
+  printf 'STRIPE_SECRET=%s\n' "$sk" > examples/demo/.env
+  git add -A && git -c user.email=t@t -c user.name=t commit -qm init
+  gitleaks git -c "$base" --no-banner --report-format json --report-path out.json . >/dev/null 2>&1 || true
+  [ "$(jq 'length' out.json)" -ge 1 ]
+  [[ "$(jq -r '.[].File' out.json)" == *"examples/demo/.env"* ]]
+}
+
 @test "codex plugin manifest: display name is 'Defect Scan', name is the slug, version in sync" {
   root="$BATS_TEST_DIRNAME/.."
   [ -f "$root/.codex-plugin/plugin.json" ]

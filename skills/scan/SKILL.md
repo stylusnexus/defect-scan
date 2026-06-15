@@ -91,8 +91,28 @@ via `lib/detect.sh tool <name>` and skip-with-hint if absent:
 - **`semgrep`** — `semgrep --config auto --json <paths>` — multi-language taint
   rules covering injection (cat#3), subprocess/argv hygiene (P4), and SQL misuse
   (P9). The single highest-value optional add. Findings are **High** (tool-confirmed).
-- **`gitleaks`** — `gitleaks detect --no-git --report-format json` — committed
-  secrets/credentials (cat#3-adjacent supply-chain). Any hit is **High**.
+- **`gitleaks`** — committed secrets/credentials (cat#3-adjacent supply-chain).
+  **Scan committed content, and pre-filter, or it's pure noise.** Use git mode with the
+  bundled baseline config:
+  `gitleaks git --report-format json -c ${CLAUDE_PLUGIN_ROOT}/skills/scan/gitleaks-baseline.toml`
+  — **git mode** (not `--no-git`) only sees *tracked/committed* files, so it skips
+  `node_modules/`, build output, and gitignored `.env*` automatically; the baseline
+  allowlists those paths and well-known **public demo keys** (e.g. the Supabase demo
+  anon/service JWTs) that otherwise generate thousands of false positives.
+  **Triage before reporting — never dump the raw count:**
+  1. Only a **committed** secret is a real leak — a hit in a gitignored/untracked file
+     is not (confirm with `git ls-files --error-unmatch <file>`); for a *public* repo,
+     only committed history matters.
+  2. **Collapse mass-duplicates** — one demo/example key repeated across N CI files is
+     one finding (note the count), not N. If the raw count is huge and dominated by one
+     pattern, say so and report the *triaged* number.
+  3. A genuine committed, non-demo secret is **High**; everything else is noise — drop it.
+  The baseline allowlists only generated/vendored paths (node_modules, build output) +
+  demo-key *values* — it does **not** allowlist `examples/`/`.env.local` etc., so a real
+  secret committed there still fires. Tradeoff: git-mode misses a secret in an
+  *uncommitted* working file (the `DEFECT_SCAN_HOOK` pre-commit advisory covers that lane).
+  (Dogfood lesson, issue #20: a raw `--no-git` run produced 8522 findings, 100% false
+  positive — all public demo JWTs + gitignored files — burying the one real check.)
 Install hints: `brew install semgrep gitleaks` (or `pipx install semgrep`).
 
 **Read exit codes — do not equate "ran" with "clean."** A non-zero exit that means

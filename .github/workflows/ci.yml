@@ -82,4 +82,7 @@ jobs:
             | tar -xz gitleaks
           sudo mv gitleaks /usr/local/bin/
       - name: gitleaks (full-history secret scan)
-        run: gitleaks detect --source . --redact --no-banner
+        # Dogfood the bundled baseline: it allowlists vendored/build paths and the
+        # well-known public demo keys our own test fixtures use, so this job flags only
+        # genuine leaks (the same config the skill ships — see issue #20).
+        run: gitleaks detect --source . --config skills/scan/gitleaks-baseline.toml --redact --no-banner
