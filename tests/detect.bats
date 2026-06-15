@@ -82,6 +82,22 @@ setup() {
   [ -f "$d/clean_near_miss_except.py" ]          # near-miss present
 }
 
+@test "eval: react-typescript corpus scores a clean run 1.0 and has a near-miss" {
+  corpus="$BATS_TEST_DIRNAME/eval/react-typescript/seen"
+  [ -s "$corpus/bug_floating_promise.ts.expected" ]                 # buggy: non-empty
+  [ -f "$corpus/clean_validated_json.ts.expected" ] && [ ! -s "$corpus/clean_validated_json.ts.expected" ]  # near-miss clean: empty
+  f="$BATS_TEST_TMPDIR/rts"
+  {
+    echo "bug_floating_promise.ts:6:cat#2"
+    echo "bug_index_key.tsx:5:cat#5"
+    echo "bug_unvalidated_json.ts:4:cat#1"
+  } > "$f"
+  run "$DETECT" eval "$corpus" "$f"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"precision=1.00"* ]]
+  [[ "$output" == *"recall=1.00"* ]]
+}
+
 @test "eval: counts a final finding that has no trailing newline (no silent drop)" {
   corpus="$BATS_TEST_DIRNAME/eval/python/seen"
   f="$BATS_TEST_TMPDIR/nonl"
