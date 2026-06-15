@@ -17,7 +17,7 @@ Language-aware defect hunter. Pipeline: **detect → triage → tool pass → re
 - `--depth N` — deep-reason the top N triaged source files (default 20)
 - `--fix` — apply the high-confidence, tool-confirmed tier (re-verified)
 - `--fix-all` — also apply the medium tier (with confirmation)
-- `--lang <profile>` — force a profile (react-typescript | python | ruby | go | csharp | dart | generic)
+- `--lang <profile>` — force a profile (react-typescript | python | ruby | go | csharp | java | dart | generic)
 - `--no-correlate` — skip GitHub-issue correlation (on by default when `gh` is present)
 - `--cross-model` — verify reasoning findings through a second model (Codex, read-only)
   for a different-model second opinion; needs `codex` installed
