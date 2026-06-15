@@ -6,6 +6,12 @@ set -eu
 # Absolute path to this skill dir (the dir containing lib/). Works via symlink.
 skill_dir() { CDPATH= cd -- "$(dirname -- "$0")/.." && pwd; }
 
+# eval_corpus_root: where the labeled eval corpus lives. Defaults to the repo's
+# tests/eval (resolved from this script's location), overridable for tests.
+eval_corpus_root() {
+  printf '%s\n' "${DEFECT_SCAN_EVAL_CORPUS:-$(skill_dir)/../../tests/eval}"
+}
+
 # fm_get <file> <key>: print the frontmatter value for <key>. Frontmatter is the
 # block between the first two '---' lines. Lists (comma/space) → space-separated.
 # Trailing '# comment' is stripped. Prints nothing if absent / no frontmatter.
@@ -348,6 +354,27 @@ cmd_eval() {
   }'
 }
 
+# eval-categories <lang>: the authoritative valid-label set for a language —
+# baseline cat#1..5 UNION every label present in that language's corpus .expected
+# files. Model-FREE (pure set union over existing artifacts). Used by eval-mode (tell
+# the model which labels to emit) and eval-gaps (per-category coverage denominator).
+cmd_eval_categories() {
+  lang="${1:?usage: detect.sh eval-categories <lang>}"
+  root="$(eval_corpus_root)"
+  [ -d "$root/$lang" ] || { echo "eval-categories: no corpus for '$lang' under $root" >&2; return 2; }
+  {
+    printf 'cat#1\ncat#2\ncat#3\ncat#4\ncat#5\n'
+    # labels are the part after "<line>:" in each non-empty, non-comment .expected line
+    find "$root/$lang" -name '*.expected' -type f 2>/dev/null | while IFS= read -r f; do
+      while IFS= read -r ln || [ -n "$ln" ]; do
+        [ -n "$ln" ] || continue
+        case "$ln" in \#*) continue ;; esac
+        printf '%s\n' "${ln#*:}"
+      done < "$f"
+    done
+  } | sort -u
+}
+
 # codex-verify <prompt-file>: cross-model second opinion via Codex (a DIFFERENT model
 # than the one running the scan = different blind spots). Runs Codex NON-INTERACTIVELY
 # and READ-ONLY — it may reason and read, but never write or run side-effecting
@@ -399,6 +426,7 @@ main() {
   case "$sub" in
     preflight)    cmd_preflight "$@" ;;
     eval)         cmd_eval "$@" ;;
+    eval-categories) cmd_eval_categories "$@" ;;
     codex-verify) cmd_codex_verify "$@" ;;
     stacks)    cmd_stacks "$@" ;;
     tool)      cmd_tool "$@" ;;

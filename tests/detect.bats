@@ -119,6 +119,28 @@ setup() {
   [[ "$output" == *"eval"* ]]
 }
 
+@test "eval-categories: baseline cats unioned with corpus-specific labels" {
+  run "$DETECT" eval-categories rust
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"cat#1"* ]] && [[ "$output" == *"cat#5"* ]]
+  [[ "$output" == *"panic"* ]]            # rust corpus uses a language-specific label
+}
+
+@test "eval-categories: yaml has coerce, shell has quoting" {
+  run "$DETECT" eval-categories yaml
+  [[ "$output" == *"coerce"* ]]
+  run "$DETECT" eval-categories shell
+  [[ "$output" == *"quoting"* ]]
+}
+
+@test "eval-categories: honors DEFECT_SCAN_EVAL_CORPUS override" {
+  mkdir -p "$BATS_TEST_TMPDIR/c/foo/seen"
+  printf '3:widget\n' > "$BATS_TEST_TMPDIR/c/foo/seen/bug_x.ext.expected"
+  DEFECT_SCAN_EVAL_CORPUS="$BATS_TEST_TMPDIR/c" run "$DETECT" eval-categories foo
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"widget"* ]] && [[ "$output" == *"cat#3"* ]]
+}
+
 @test "codex-verify: requires a prompt file" {
   run "$DETECT" codex-verify
   [ "$status" -eq 2 ]
