@@ -8,3 +8,6 @@ defect-scan.code-workspace
 # tooling caches / agent scratch
 .ruff_cache/
 .claude/agent-memory/
+
+# defect-scan eval harness: transient per-run record (not ground truth)
+tests/eval/*/.last-run.*
