@@ -27,6 +27,8 @@ Language-aware defect hunter. Pipeline: **detect → triage → tool pass → re
 - **9 battle-tested patterns** (`patterns/recurring.md`) + per-language reasoning checklists.
 - **Confidence tiers**: High (tool-confirmed / adversarially verified) · Medium · Low.
 - **Tracker correlation**: tags findings NEW / LIKELY FILED #N / RELATED #N / VERIFY REGRESSION #N.
+- **Extensible:** add a language or defect pack by dropping files in `.defect-scan/`
+  — see `EXTENDING.md` (copy `profiles/TEMPLATE.md.example`, fill 4 fields).
 
 ## Optional pre-commit advisory (off by default)
 Set `DEFECT_SCAN_HOOK=1` to get a one-line, non-blocking advisory on changed files

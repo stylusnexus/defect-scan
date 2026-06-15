@@ -416,3 +416,12 @@ setup() {
   grep -q "detect.sh patterns" "$f"
   grep -q "DEFECT_SCAN_NO_PROJECT" "$f"
 }
+
+@test "extension docs exist: EXTENDING.md, template, help pointer" {
+  root="$BATS_TEST_DIRNAME/.."
+  [ -f "$root/EXTENDING.md" ]
+  [ -f "$root/skills/scan/profiles/TEMPLATE.md.example" ]
+  grep -q "EXTENDING.md" "$root/README.md"
+  grep -q "EXTENDING.md" "$root/commands/help.md"
+  grep -q "TEMPLATE.md.example" "$root/EXTENDING.md"
+}

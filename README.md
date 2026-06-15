@@ -47,6 +47,12 @@ Set `DEFECT_SCAN_HOOK=1` to get a one-line, **non-blocking** advisory on changed
 source files when committing. It runs only the deterministic tool pass; for the
 full reasoning report run `/defect-scan:scan`.
 
+## Extending it (zero core edits)
+Add a language or custom defect rules by dropping files in `.defect-scan/` (team)
+or `~/.config/defect-scan/` (personal) — no core changes. Copy
+`skills/scan/profiles/TEMPLATE.md.example`, fill four frontmatter fields, done.
+**Full step-by-step guide: [`EXTENDING.md`](./EXTENDING.md).**
+
 ## Local dev
 `./install.sh` symlinks `skills/scan/` into `~/.claude/skills/defect-scan` so it
 loads while you iterate. Remove that symlink once the plugin is installed, to
