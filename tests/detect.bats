@@ -1240,3 +1240,15 @@ EOF
   grep -q "eval-mode" "$root/skills/scan/SKILL.md"
   grep -q "eval-mode" "$root/codex/defect-scan.md"
 }
+
+@test "runners exist, are read-only, force --lang, and never write" {
+  root="$BATS_TEST_DIRNAME/.."
+  for rn in claude codex; do
+    f="$root/tests/eval/runners/$rn.sh"
+    [ -x "$f" ]
+    sh -n "$f"
+    grep -q -- "--lang" "$f"
+  done
+  grep -q -- "--sandbox read-only" "$root/tests/eval/runners/codex.sh"
+  grep -Eq -- "--(permission-mode|allowedTools|disallowedTools)" "$root/tests/eval/runners/claude.sh"
+}
