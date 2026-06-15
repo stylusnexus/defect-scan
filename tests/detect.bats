@@ -168,6 +168,50 @@ setup() {
   [[ "$output" == *"widget"* ]] && [[ "$output" == *"cat#3"* ]]
 }
 
+_mk_eval_corpus() {  # $1 = root, $2 = lang
+  mkdir -p "$1/$2/seen"
+  printf 'x\n' > "$1/$2/seen/bug_one.ext"
+  printf '1:cat#2\n' > "$1/$2/seen/bug_one.ext.expected"   # matches the stub's default finding
+  printf 'x\n' > "$1/$2/seen/clean_ok.ext"
+  : > "$1/$2/seen/clean_ok.ext.expected"   # empty sidecar => clean
+}
+
+@test "eval-run: exit 3 when DEFECT_SCAN_EVAL_RUNNER is unset" {
+  c="$BATS_TEST_TMPDIR/c"; _mk_eval_corpus "$c" foo
+  DEFECT_SCAN_EVAL_CORPUS="$c" run env -u DEFECT_SCAN_EVAL_RUNNER "$DETECT" eval-run foo
+  [ "$status" -eq 3 ]
+}
+
+@test "eval-run: a clean run over the corpus scores precision/recall 1.00" {
+  c="$BATS_TEST_TMPDIR/c"; _mk_eval_corpus "$c" foo
+  DEFECT_SCAN_EVAL_CORPUS="$c" \
+  DEFECT_SCAN_EVAL_RUNNER="$BATS_TEST_DIRNAME/fixtures/eval-runner-stub" \
+  DEFECT_SCAN_STUB_MODE=perfect \
+    run "$DETECT" eval-run foo --runs 3
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"mean_precision=1.00"* ]]
+  [[ "$output" == *"mean_recall=1.00"* ]]
+  [[ "$output" == *"clean_fp_runs=0"* ]]
+}
+
+@test "eval-run: a finding on the clean fixture shows up as clean-FP rate" {
+  c="$BATS_TEST_TMPDIR/c"; _mk_eval_corpus "$c" foo
+  DEFECT_SCAN_EVAL_CORPUS="$c" \
+  DEFECT_SCAN_EVAL_RUNNER="$BATS_TEST_DIRNAME/fixtures/eval-runner-stub" \
+  DEFECT_SCAN_STUB_MODE=ok DEFECT_SCAN_STUB_FINDING="4:cat#2" \
+    run "$DETECT" eval-run foo --runs 2
+  [[ "$output" == *"clean_fp_runs=2"* ]]
+}
+
+@test "eval-run: a missing block marks the run partial (not a silent pass)" {
+  c="$BATS_TEST_TMPDIR/c"; _mk_eval_corpus "$c" foo
+  DEFECT_SCAN_EVAL_CORPUS="$c" \
+  DEFECT_SCAN_EVAL_RUNNER="$BATS_TEST_DIRNAME/fixtures/eval-runner-stub" \
+  DEFECT_SCAN_STUB_MODE=missing \
+    run "$DETECT" eval-run foo --runs 1
+  [[ "$output" == *"partial"* ]] || [[ "$output" == *"inconclusive"* ]]
+}
+
 @test "codex-verify: requires a prompt file" {
   run "$DETECT" codex-verify
   [ "$status" -eq 2 ]

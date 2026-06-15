@@ -17,6 +17,11 @@ echo "stub scan report for $base"        # stand-in for the human report
 case "$mode" in
   ok)        printf '<<<EVAL\n%s:%s\nEVAL>>>\n' "$base" "$finding" ;;
   empty)     printf '<<<EVAL\nEVAL>>>\n' ;;
+  perfect)
+    case "$base" in
+      clean_*|Clean*) printf '<<<EVAL\nEVAL>>>\n' ;;
+      *)              printf '<<<EVAL\n%s:%s\nEVAL>>>\n' "$base" "$finding" ;;
+    esac ;;
   missing)   : ;;                          # no block at all
   dup)       printf '<<<EVAL\n%s:%s\nEVAL>>>\n<<<EVAL\nEVAL>>>\n' "$base" "$finding" ;;
   malformed) printf '<<<EVAL\nnot-a-valid-line\nEVAL>>>\n' ;;

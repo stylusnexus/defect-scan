@@ -416,6 +416,109 @@ cmd_codex_verify() {
   fi
 }
 
+# --- eval-run: model-FREE orchestrator over the swappable runner -------------
+# Phase 4 replaces these temporary stubs with the real gate + baseline writer.
+eval_gate() { return 0; }
+eval_update_baseline() { :; }
+
+# eval-run <lang> [--runs N] [--split seen|held-out|all] [--update-baseline]
+# Model-FREE orchestrator. Per split: N runs, each run scans every SOURCE fixture via
+# the swappable $DEFECT_SCAN_EVAL_RUNNER (per-fixture), accumulates findings into one
+# file, and scores the whole split ONCE with cmd_eval. Aggregates mean/stddev and the
+# clean-fixture FP rate, writes the .last-run artifact, then gates (Phase 4).
+cmd_eval_run() {
+  lang=""; runs=5; split="seen"; update=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --runs) runs="${2:?}"; shift 2 ;;
+      --split) split="${2:?}"; shift 2 ;;
+      --update-baseline) update=1; shift ;;
+      -*) echo "eval-run: unknown flag $1" >&2; return 2 ;;
+      *) [ -z "$lang" ] && lang="$1" || { echo "eval-run: unexpected arg $1" >&2; return 2; }; shift ;;
+    esac
+  done
+  [ -n "$lang" ] || { echo "usage: detect.sh eval-run <lang> [--runs N] [--split seen|held-out|all]" >&2; return 2; }
+  runner="${DEFECT_SCAN_EVAL_RUNNER:-}"
+  [ -n "$runner" ] || { echo "eval-run: set DEFECT_SCAN_EVAL_RUNNER to a runner script (tests/eval/runners/*.sh)" >&2; return 3; }
+  root="$(eval_corpus_root)"
+  case "$split" in all) splits="seen held-out" ;; *) splits="$split" ;; esac
+
+  overall_rc=0
+  for sp in $splits; do
+    dir="$root/$lang/$sp"
+    if [ ! -d "$dir" ]; then
+      [ "$split" = all ] && { echo "eval-run: $lang/$sp absent — skipping"; continue; }
+      echo "eval-run: corpus split not found: $dir" >&2; return 2
+    fi
+    pvals=""; rvals=""; clean_fp_runs=0; partial=0
+    last_findings=""
+    r=1
+    while [ "$r" -le "$runs" ]; do
+      findings="$(mktemp 2>/dev/null || echo "/tmp/ds-er-$$.$r")"
+      for src in "$dir"/*; do
+        case "$src" in *.expected) continue ;; esac
+        [ -f "$src" ] || continue
+        out="$("$runner" "$src" "$lang" 2>/dev/null)" || { partial=1; continue; }
+        block="$(printf '%s' "$out" | extract_eval_block)" || { partial=1; continue; }
+        [ -n "$block" ] && printf '%s\n' "$block" >> "$findings"
+      done
+      m="$(cmd_eval "$dir" "$findings")"
+      p="$(printf '%s\n' "$m" | sed -n 's/.*precision=\([0-9.]*\).*/\1/p')"
+      rr="$(printf '%s\n' "$m" | sed -n 's/.*recall=\([0-9.]*\).*/\1/p')"
+      pvals="$pvals $p"; rvals="$rvals $rr"
+      if eval_clean_fp "$dir" "$findings"; then clean_fp_runs=$((clean_fp_runs+1)); fi
+      last_findings="$(cat "$findings")"
+      rm -f "$findings"
+      r=$((r+1))
+    done
+
+    mp="$(_eval_mean $pvals)"; sp_p="$(_eval_stddev $pvals)"
+    mr="$(_eval_mean $rvals)"; sp_r="$(_eval_stddev $rvals)"
+
+    art="$root/$lang/.last-run.$sp.txt"
+    {
+      printf 'runs=%s\nmean_precision=%s\nstddev_precision=%s\nmean_recall=%s\nstddev_recall=%s\nclean_fp_runs=%s\n' \
+        "$runs" "$mp" "$sp_p" "$mr" "$sp_r" "$clean_fp_runs"
+      printf '@findings\n%s\n' "$last_findings"
+    } > "$art"
+
+    echo "eval-run $lang/$sp: runs=$runs mean_precision=$mp(±$sp_p) mean_recall=$mr(±$sp_r) clean_fp_runs=$clean_fp_runs"
+    [ "$partial" = 1 ] && echo "eval-run $lang/$sp: PARTIAL — at least one fixture run was inconclusive (missing/invalid block)"
+
+    if [ "$update" = 1 ]; then
+      eval_update_baseline "$root/$lang/baseline.$sp.txt" "$mp" "$mr"
+      echo "eval-run $lang/$sp: baseline updated (commit via CODEOWNERS PR)"
+    else
+      eval_gate "$root/$lang/baseline.$sp.txt" "$mp" "$mr" "$clean_fp_runs" || overall_rc=1
+    fi
+  done
+  return "$overall_rc"
+}
+
+# eval_clean_fp <dir> <findings>: exit 0 if any CLEAN fixture (empty .expected) appears
+# in the findings file (an FP), else exit 1.
+eval_clean_fp() {
+  d="$1"; f="$2"
+  for exp in "$d"/*.expected; do
+    [ -f "$exp" ] || continue
+    [ -s "$exp" ] && continue
+    base="$(basename "$exp" .expected)"
+    if grep -q "^$base:" "$f" 2>/dev/null || grep -q "/$base:" "$f" 2>/dev/null; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+# _eval_mean / _eval_stddev: arithmetic mean and POPULATION stddev of space-separated
+# decimals, printed to 2 dp. Empty input -> 0.00.
+_eval_mean() { awk 'BEGIN{n=0;s=0; for(i=1;i<=ARGC-1;i++){s+=ARGV[i];n++}; printf "%.2f", n? s/n:0}' "$@"; }
+_eval_stddev() {
+  awk 'BEGIN{n=0;s=0; for(i=1;i<=ARGC-1;i++){a[++n]=ARGV[i];s+=ARGV[i]}
+       if(!n){printf "0.00"; exit} m=s/n; v=0; for(i=1;i<=n;i++)v+=(a[i]-m)*(a[i]-m);
+       printf "%.2f", sqrt(v/n)}' "$@"
+}
+
 # preflight: verify the external tools detect.sh depends on are present, so users on
 # an unsupported shell/platform get a clear, actionable message instead of a cryptic
 # awk/git failure mid-scan. Core tools are required; jq/gh are optional (correlation
@@ -445,6 +548,7 @@ main() {
     preflight)    cmd_preflight "$@" ;;
     eval)         cmd_eval "$@" ;;
     eval-categories) cmd_eval_categories "$@" ;;
+    eval-run)     cmd_eval_run "$@" ;;
     codex-verify) cmd_codex_verify "$@" ;;
     stacks)    cmd_stacks "$@" ;;
     tool)      cmd_tool "$@" ;;
@@ -459,7 +563,7 @@ main() {
     __fmget)   fm_get "$@" ;;
     __fmfield) fm_field "$@" ;;
     __evalblock) extract_eval_block ;;
-    *) echo "usage: detect.sh {preflight|eval|codex-verify|stacks|tool|scope|triage|issues|issues-create|issues-ensure-label|labels|profiles|patterns} ..." >&2; return 2 ;;
+    *) echo "usage: detect.sh {preflight|eval|eval-categories|eval-run|codex-verify|stacks|tool|scope|triage|issues|issues-create|issues-ensure-label|labels|profiles|patterns} ..." >&2; return 2 ;;
   esac
 }
 main "$@"
