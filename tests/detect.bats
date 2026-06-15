@@ -217,6 +217,27 @@ _mk_baseline() {  # $1=path $2=pfloor $3=rfloor $4=pbase $5=rbase $6=noise
     "$2" "$3" "$4" "$5" "$6" > "$1"
 }
 
+@test "eval-run: an all-inconclusive run fails (partial is never a green pass)" {
+  c="$BATS_TEST_TMPDIR/c"; _mk_eval_corpus "$c" foo
+  _mk_baseline "$c/foo/baseline.seen.txt" 0.80 0.50 0.80 0.50 0.10
+  DEFECT_SCAN_EVAL_CORPUS="$c" \
+  DEFECT_SCAN_EVAL_RUNNER="$BATS_TEST_DIRNAME/fixtures/eval-runner-stub" \
+  DEFECT_SCAN_STUB_MODE=missing \
+    run "$DETECT" eval-run foo --runs 1
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"PARTIAL"* ]]
+}
+
+@test "eval-run --update-baseline refuses on a partial run" {
+  c="$BATS_TEST_TMPDIR/c"; _mk_eval_corpus "$c" foo
+  DEFECT_SCAN_EVAL_CORPUS="$c" \
+  DEFECT_SCAN_EVAL_RUNNER="$BATS_TEST_DIRNAME/fixtures/eval-runner-stub" \
+  DEFECT_SCAN_STUB_MODE=missing \
+    run "$DETECT" eval-run foo --runs 1 --update-baseline
+  [ "$status" -ne 0 ]
+  [ ! -f "$c/foo/baseline.seen.txt" ]      # nothing written from a broken run
+}
+
 @test "eval_gate: PASS when precision >= floor and recall ok" {
   b="$BATS_TEST_TMPDIR/b.txt"; _mk_baseline "$b" 0.90 0.70 0.94 0.75 0.05
   run "$DETECT" __evalgate "$b" 0.95 0.80 0

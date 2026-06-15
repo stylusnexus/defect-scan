@@ -517,10 +517,19 @@ cmd_eval_run() {
     [ "$partial" = 1 ] && echo "eval-run $lang/$sp: PARTIAL — at least one fixture run was inconclusive (missing/invalid block)"
 
     if [ "$update" = 1 ]; then
-      eval_update_baseline "$root/$lang/baseline.$sp.txt" "$mp" "$mr"
-      echo "eval-run $lang/$sp: baseline updated (commit via CODEOWNERS PR)"
+      if [ "$partial" = 1 ]; then
+        echo "eval-run $lang/$sp: PARTIAL — refusing to update baseline from an inconclusive run" >&2
+        overall_rc=1
+      else
+        eval_update_baseline "$root/$lang/baseline.$sp.txt" "$mp" "$mr"
+        echo "eval-run $lang/$sp: baseline updated (commit via CODEOWNERS PR)"
+      fi
     else
       eval_gate "$root/$lang/baseline.$sp.txt" "$mp" "$mr" "$clean_fp_runs" || overall_rc=1
+      if [ "$partial" = 1 ]; then
+        echo "eval-run $lang/$sp: PARTIAL run is not a pass — failing (investigate runner/model setup)"
+        overall_rc=1
+      fi
     fi
   done
 
@@ -593,7 +602,12 @@ cmd_eval_gaps() {
     fi
   done
   cmd_eval_categories "$lang" | while IFS= read -r cat; do
-    printf '%s\n' "$exp_counts" | grep -q " $cat\$" || echo "  uncovered: $cat — no corpus fixtures"
+    # Exact (literal) compare on the category field — `uniq -c` lines are
+    # "<count> <category>", so $NF is the label. A regex grep here would let a
+    # metachar label (e.g. "a.c") spuriously match a sibling ("axc") and suppress
+    # a real "uncovered" report; match exactly, as the detected side does.
+    printf '%s\n' "$exp_counts" | awk -v c="$cat" '$NF==c{f=1} END{exit !f}' \
+      || echo "  uncovered: $cat — no corpus fixtures"
   done
 }
 

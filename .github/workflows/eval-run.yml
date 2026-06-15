@@ -18,11 +18,19 @@ jobs:
     runs-on: ubuntu-latest
     environment: eval-run    # configure with required reviewers + the model secret
     steps:
+      - name: Enforce trusted ref (no secret exposure to arbitrary branches)
+        run: |
+          case "${{ github.ref }}" in
+            refs/heads/main|refs/heads/dev) echo "trusted ref: ${{ github.ref }}" ;;
+            *) echo "::error::eval-run may only run from main or dev (got ${{ github.ref }})"; exit 1 ;;
+          esac
       - uses: actions/checkout@v4    # checks out the dispatched (trusted) ref
       - name: Install bats + jq
         run: sudo apt-get update && sudo apt-get install -y bats jq
       - name: Install codex (eval runner)
-        run: echo "Provision the codex CLI here (org-specific)."
+        run: |
+          echo "::error::Provision the codex CLI + auth here (org-specific), then remove this guard."
+          exit 1
       - name: Run the eval harness
         env:
           DEFECT_SCAN_EVAL_RUNNER: tests/eval/runners/codex.sh
