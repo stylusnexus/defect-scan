@@ -1,0 +1,7 @@
+name: ci
+on: [issues]
+jobs:
+  comment:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Title: ${{ github.event.issue.title }}"   # cat#3: untrusted input into run: (script injection)
