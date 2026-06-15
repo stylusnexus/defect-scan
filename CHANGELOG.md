@@ -10,6 +10,15 @@ commit messages instead (`feat:`, `fix:`, `perf:`, `docs:` … show up; `chore:`
 are hidden by default). The release commit and this file are back-merged `main → dev`
 by the deploy flow so history stays aligned.
 
+## [1.6.0](https://github.com/stylusnexus/defect-scan/compare/v1.5.0...v1.6.0) (2026-06-15)
+
+
+### Features
+
+* **defect-scan:** add Codex plugin manifest (display name 'Defect Scan') + sync guards ([#46](https://github.com/stylusnexus/defect-scan/issues/46)) ([3f10ab7](https://github.com/stylusnexus/defect-scan/commit/3f10ab77d10e592f10c3dd26a13cd0a562c5eb2f))
+* **defect-scan:** Codex plugin display name + deepened dart/Flutter profile ([cd26647](https://github.com/stylusnexus/defect-scan/commit/cd2664716c5290f3a9ce2e86f80564b440834a62))
+* **defect-scan:** deepen dart/Flutter profile + README language table ([#44](https://github.com/stylusnexus/defect-scan/issues/44)) ([b959340](https://github.com/stylusnexus/defect-scan/commit/b959340681637f67811a0347ee4958126d07d13a))
+
 ## [1.5.0](https://github.com/stylusnexus/defect-scan/compare/v1.4.0...v1.5.0) (2026-06-15)
 
 
