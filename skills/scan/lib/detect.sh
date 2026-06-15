@@ -1,6 +1,6 @@
 #!/usr/bin/env sh
 # detect.sh — deterministic plumbing for the defect-scan skill.
-# Subcommands: stacks <dir> | tool <name> [cwd] | scope [target] [--full] [cwd]
+# Subcommands: stacks|tool|scope|triage|issues|profiles|patterns
 set -eu
 
 # Absolute path to this skill dir (the dir containing lib/). Works via symlink.

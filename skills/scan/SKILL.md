@@ -38,6 +38,11 @@ lib/detect.sh stacks "<repo-root>"                                 # one profile
 A repo may match multiple profiles; run each matched profile over its own files.
 `--lang` overrides detection.
 
+Profiles are discovered across three layers (built-in, `~/.config/defect-scan`,
+`./.defect-scan`); `lib/detect.sh profiles <repo>` lists `name⇥path⇥origin`. Load
+each matched profile by its path. `--no-user-profiles` / `--no-project-profiles`
+set `DEFECT_SCAN_NO_USER=1` / `DEFECT_SCAN_NO_PROJECT=1` for a built-in-only scan.
+
 ## Stage 1b — Triage (approach a large codebase methodically)
 Rank the in-scope files so the deep passes hit the highest-risk code first:
 ```
@@ -65,6 +70,13 @@ resolve, record it as **missing** with the profile's install hint and continue �
 never abort the scan. If a tool crashes or times out, capture stderr, mark that
 check **inconclusive**, and continue.
 
+**Origin-gated execution.** For a profile with `origin=builtin`, run its tools
+automatically. For `origin=user` or `origin=project`, the profile came from a
+scanned/user location — surface the suggested tool and CONFIRM with the user
+before running it; resolve it via `lib/detect.sh tool <name>` (never a raw shell
+string from the profile). This prevents a scanned repo's profile from executing
+arbitrary commands (pattern P4).
+
 **Cross-cutting deep analyzers (optional, any stack — run if installed).** These
 sharpen ground truth for the reasoning categories tools usually miss; resolve each
 via `lib/detect.sh tool <name>` and skip-with-hint if absent:
@@ -83,9 +95,9 @@ such with the stderr reason; never let a tool error read as a passing file.
 
 ## Stage 3 — Reasoning pass
 Read the in-scope files against the profile's `## Reasoning checklist`,
-`baseline-categories.md`, and `patterns/recurring.md` (battle-tested cross-cutting
-patterns: metered-action charge/refund correctness, string-keyed identifier drift,
-privileged-audience data leaks). For EVERY reasoning-only finding, run an
+`baseline-categories.md`, and
+consult every file listed by `lib/detect.sh patterns <repo>` (built-in `patterns/recurring.md`
+P1–P10 plus any user/project pattern packs). For EVERY reasoning-only finding, run an
 **adversarial verification** pass before ranking: state the strongest case that the finding is
 NOT a real defect (guard exists elsewhere, input is trusted, path unreachable).
 - Survives with a clear repro path → eligible for **High**.

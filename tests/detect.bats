@@ -404,3 +404,15 @@ setup() {
   [[ "${lines[0]}" == *"recurring.md" ]]
   [[ "$output" == *".defect-scan/patterns/custom.md"* ]]
 }
+
+@test "detect.sh usage lists profiles and patterns subcommands" {
+  run "$DETECT" bogus
+  [[ "$output" == *"profiles"* ]]; [[ "$output" == *"patterns"* ]]
+}
+
+@test "SKILL.md documents origin-gated execution and layered profiles" {
+  f="$BATS_TEST_DIRNAME/../skills/scan/SKILL.md"
+  grep -qi "origin-gated\|origin=builtin\|CONFIRM" "$f"
+  grep -q "detect.sh patterns" "$f"
+  grep -q "DEFECT_SCAN_NO_PROJECT" "$f"
+}
