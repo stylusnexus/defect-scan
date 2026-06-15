@@ -32,6 +32,77 @@ setup() {
   [[ "$output" == *"preflight"* ]]
 }
 
+@test "eval: a clean run (all expected bugs, no FPs) scores precision 1, recall 1" {
+  corpus="$BATS_TEST_DIRNAME/eval/python/seen"
+  f="$BATS_TEST_TMPDIR/good"
+  {
+    echo "bug_bare_except.py:5:cat#2"
+    echo "bug_resource_leak.py:2:cat#4"
+    echo "bug_mutable_default.py:1:cat#5"
+  } > "$f"
+  run "$DETECT" eval "$corpus" "$f"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"precision=1.00"* ]]
+  [[ "$output" == *"recall=1.00"* ]]
+  [[ "$output" == *"fp=0"* ]]
+}
+
+@test "eval: a finding on a clean fixture is a false positive (precision drops)" {
+  corpus="$BATS_TEST_DIRNAME/eval/python/seen"
+  f="$BATS_TEST_TMPDIR/noisy"
+  {
+    echo "bug_bare_except.py:5:cat#2"
+    echo "bug_resource_leak.py:2:cat#4"
+    echo "bug_mutable_default.py:1:cat#5"
+    echo "clean_near_miss_except.py:5:cat#2"   # the tripwire: FP on a clean near-miss
+  } > "$f"
+  run "$DETECT" eval "$corpus" "$f"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"fp=1"* ]]
+  [[ "$output" != *"precision=1.00"* ]]        # noise must NOT score as perfect
+}
+
+@test "eval: a missed expected bug is a false negative (recall drops)" {
+  corpus="$BATS_TEST_DIRNAME/eval/python/seen"
+  f="$BATS_TEST_TMPDIR/missed"
+  {
+    echo "bug_bare_except.py:5:cat#2"
+    echo "bug_resource_leak.py:2:cat#4"
+  } > "$f"                                       # omits the mutable-default bug
+  run "$DETECT" eval "$corpus" "$f"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"fn=1"* ]]
+  [[ "$output" != *"recall=1.00"* ]]
+}
+
+@test "eval: corpus has buggy + clean fixtures incl. a near-miss (FP tripwire)" {
+  d="$BATS_TEST_DIRNAME/eval/python/seen"
+  [ -s "$d/bug_bare_except.py.expected" ]        # buggy: non-empty sidecar
+  [ -f "$d/clean_contextmanager.py.expected" ] && [ ! -s "$d/clean_contextmanager.py.expected" ]  # clean: empty
+  [ -f "$d/clean_near_miss_except.py" ]          # near-miss present
+}
+
+@test "eval: counts a final finding that has no trailing newline (no silent drop)" {
+  corpus="$BATS_TEST_DIRNAME/eval/python/seen"
+  f="$BATS_TEST_TMPDIR/nonl"
+  # Two findings, NO trailing newline on the last line.
+  printf 'bug_bare_except.py:5:cat#2\nbug_resource_leak.py:2:cat#4' > "$f"
+  run "$DETECT" eval "$corpus" "$f"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"tp=2"* ]]        # both counted, last line not dropped
+}
+
+@test "eval: errors clearly on a missing corpus dir or findings file" {
+  run "$DETECT" eval "/no/such/corpus" "/no/such/findings"
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"not found"* ]]
+}
+
+@test "usage lists the eval subcommand" {
+  run "$DETECT" bogus
+  [[ "$output" == *"eval"* ]]
+}
+
 @test "windows fallback: PowerShell shim exists and delegates to the shared engine" {
   f="$BATS_TEST_DIRNAME/../windows/defect-scan.ps1"
   [ -f "$f" ]

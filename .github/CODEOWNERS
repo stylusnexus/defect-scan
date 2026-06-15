@@ -1,0 +1,26 @@
+# Code owners for defect-scan.
+#
+# Why: in a public repo, CI can prove a proposed check is *noisy* (the eval grader
+# fails), but it cannot prove a PR isn't *weakening the grader itself* — deleting a
+# clean fixture, editing a .expected to bless a false positive, relaxing a safety
+# rule, or altering the deterministic plumbing. Those paths require maintainer review.
+# Pair this with branch protection ("require review from Code Owners") to enforce it.
+
+# Default: anything not matched below.
+*                                   @stylusnexus/stylus-nexus
+
+# The deterministic engine (incl. the model-free eval grader + issue-filing safety).
+/skills/scan/lib/                   @stylusnexus/stylus-nexus
+
+# The eval grader's ground truth — must not be silently weakened.
+/tests/eval/                        @stylusnexus/stylus-nexus
+
+# Defect knowledge the model reads (the self-improvement write path).
+/skills/scan/profiles/              @stylusnexus/stylus-nexus
+/skills/scan/patterns/              @stylusnexus/stylus-nexus
+/skills/scan/SKILL.md               @stylusnexus/stylus-nexus
+
+# Security / CI / release machinery.
+/SECURITY.md                        @stylusnexus/stylus-nexus
+/.github/                           @stylusnexus/stylus-nexus
+/release-please-config.json         @stylusnexus/stylus-nexus
