@@ -40,7 +40,8 @@ jobs:
       - name: Shell syntax check (POSIX sh)
         run: |
           for f in skills/scan/lib/detect.sh hooks/pre-commit-scan.sh \
-                   scripts/setup-optional-tools.sh tests/fixtures/gh-stub/gh \
+                   scripts/setup-optional-tools.sh scripts/eval-run \
+                   tests/fixtures/gh-stub/gh \
                    tests/eval/runners/claude.sh tests/eval/runners/codex.sh \
                    tests/fixtures/eval-runner-stub \
                    install.sh; do

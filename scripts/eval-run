@@ -1,0 +1,40 @@
+#!/usr/bin/env sh
+# Convenience wrapper for `detect.sh eval-run` — the maintainer eval harness (#15).
+#
+# Usage:
+#   scripts/eval-run <lang> [--runs N] [--split seen|held-out|all] [--update-baseline]
+#
+# It just removes two papercuts: locating detect.sh, and picking a runner. If you
+# haven't set DEFECT_SCAN_EVAL_RUNNER, it auto-selects one (prefers a model that
+# actually executes the scan): claude if present, else codex. Everything else is
+# forwarded verbatim to `detect.sh eval-run`, so all flags work unchanged.
+#
+# Examples:
+#   scripts/eval-run python
+#   scripts/eval-run java --split all --runs 3
+#   DEFECT_SCAN_EVAL_RUNNER=tests/eval/runners/codex.sh scripts/eval-run rust
+set -eu
+
+here="$(CDPATH= cd "$(dirname "$0")" && pwd)"
+root="$(CDPATH= cd "$here/.." && pwd)"
+detect="$root/skills/scan/lib/detect.sh"
+
+[ -x "$detect" ] || { echo "eval-run: cannot find detect.sh at $detect" >&2; exit 2; }
+
+# Pick a runner if the caller hasn't. Prefer claude (reliably executes the scan);
+# fall back to codex. A runner is required — detect.sh eval-run exits 3 without one.
+if [ -z "${DEFECT_SCAN_EVAL_RUNNER:-}" ]; then
+  if command -v claude >/dev/null 2>&1; then
+    DEFECT_SCAN_EVAL_RUNNER="$root/tests/eval/runners/claude.sh"
+  elif command -v codex >/dev/null 2>&1; then
+    DEFECT_SCAN_EVAL_RUNNER="$root/tests/eval/runners/codex.sh"
+  else
+    echo "eval-run: no model runner found. Install 'claude' or 'codex', or set" >&2
+    echo "          DEFECT_SCAN_EVAL_RUNNER to a runner script." >&2
+    exit 3
+  fi
+  export DEFECT_SCAN_EVAL_RUNNER
+fi
+
+echo "eval-run: runner=$DEFECT_SCAN_EVAL_RUNNER" >&2
+exec sh "$detect" eval-run "$@"

@@ -115,16 +115,27 @@ and gate the result against a committed baseline. It is **maintainer-run** (a ma
 `workflow_dispatch` or local invocation), never on PR, because each run executes a real
 model over the corpus.
 
-```sh
-# Pick a runner first — eval-run exits 3 if DEFECT_SCAN_EVAL_RUNNER is unset.
-export DEFECT_SCAN_EVAL_RUNNER=tests/eval/runners/codex.sh   # default; read-only sandbox
-# or:  DEFECT_SCAN_EVAL_RUNNER=tests/eval/runners/claude.sh  # read-only tool policy
+The easiest entry point is the **`scripts/eval-run`** wrapper — it locates `detect.sh`
+and auto-selects a runner (prefers `claude`, falls back to `codex`) if you haven't set
+one, then forwards every flag through:
 
-detect.sh eval-run python                       # one run over the seen split, gate vs baseline
-detect.sh eval-run python --runs 5              # average 5 runs → mean ± stddev
-detect.sh eval-run python --split held-out      # score the overfitting-guard split
-detect.sh eval-run python --split all           # seen ∪ held-out
-detect.sh eval-run python --update-baseline     # rewrite baseline.<split>.txt from this run
+```sh
+scripts/eval-run python                       # one run over the seen split, gate vs baseline
+scripts/eval-run python --runs 5              # average 5 runs → mean ± stddev
+scripts/eval-run python --split held-out      # score the overfitting-guard split
+scripts/eval-run python --split all           # seen ∪ held-out
+scripts/eval-run python --update-baseline     # rewrite baseline.<split>.txt from this run
+
+# Override the auto-selected runner when you need a specific one:
+DEFECT_SCAN_EVAL_RUNNER=tests/eval/runners/codex.sh scripts/eval-run rust
+```
+
+Or call the engine directly (you must set the runner yourself — `eval-run` exits 3 if
+`DEFECT_SCAN_EVAL_RUNNER` is unset):
+
+```sh
+export DEFECT_SCAN_EVAL_RUNNER=tests/eval/runners/claude.sh   # or .../codex.sh
+skills/scan/lib/detect.sh eval-run python --runs 5
 ```
 
 `eval-run` runs the scan via the selected runner, scores each run with the model-free
