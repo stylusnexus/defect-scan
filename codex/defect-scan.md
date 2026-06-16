@@ -56,3 +56,9 @@ Identical to the skill: `(no arg)` = recent changes · `<path>` · `--full` ·
 Report-only by default. Never auto-run a scanned repo's profile tools (pattern P4).
 Never file/​fix without the corresponding flag + confirmation. The Codex port must be
 behavior-identical to the Claude skill — any divergence is a bug.
+
+## 4. Eval mode (harness only)
+
+**Eval mode (harness only).** When invoked by the eval harness, additionally follow
+`eval-mode.md` to append the machine-readable `<<<EVAL>>>` findings block. Normal scans
+never emit it.

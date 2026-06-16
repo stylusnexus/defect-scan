@@ -1,0 +1,55 @@
+name: eval-run (manual)
+
+# Manual ONLY. Never on PR/push: it spends a model + is non-deterministic. Runs from a
+# trusted ref behind an approval-gated Environment so secret model creds are never
+# exposed to PR-modified runner scripts (spec section 6 security).
+on:
+  workflow_dispatch:
+    inputs:
+      lang:   { description: "language profile (e.g. java)", required: true }
+      runs:   { description: "runs per fixture", required: false, default: "5" }
+      split:  { description: "seen | held-out | all", required: false, default: "seen" }
+
+permissions:
+  contents: read            # minimal token
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    environment: eval-run    # configure with required reviewers + the model secret
+    steps:
+      - name: Enforce trusted ref (no secret exposure to arbitrary branches)
+        run: |
+          case "${{ github.ref }}" in
+            refs/heads/main|refs/heads/dev) echo "trusted ref: ${{ github.ref }}" ;;
+            *) echo "::error::eval-run may only run from main or dev (got ${{ github.ref }})"; exit 1 ;;
+          esac
+      - uses: actions/checkout@v4    # checks out the dispatched (trusted) ref
+      - name: Install bats + jq
+        run: sudo apt-get update && sudo apt-get install -y bats jq
+      - name: Set up Node (for the codex CLI)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install + authenticate codex CLI
+        # codex is the npm package @openai/codex; it authenticates from an API key on
+        # stdin (`codex login --with-api-key`). The OPENAI_API_KEY secret must be set on
+        # the `eval-run` Environment (see README "Optional analyzers"/eval docs). Pinned
+        # to the version this repo is validated against; bump deliberately.
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          if [ -z "${OPENAI_API_KEY:-}" ]; then
+            echo "::error::OPENAI_API_KEY secret is not set on the eval-run Environment"; exit 1
+          fi
+          npm install -g @openai/codex@0.139.0
+          codex --version
+          printenv OPENAI_API_KEY | codex login --with-api-key
+          codex login status
+      - name: Run the eval harness
+        env:
+          DEFECT_SCAN_EVAL_RUNNER: tests/eval/runners/codex.sh
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          sh skills/scan/lib/detect.sh eval-run "${{ inputs.lang }}" \
+            --runs "${{ inputs.runs }}" --split "${{ inputs.split }}"

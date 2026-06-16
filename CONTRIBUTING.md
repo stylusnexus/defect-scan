@@ -220,6 +220,22 @@ is a public repo). The grader and corpus are CODEOWNERS-protected so a PR can't
 silently weaken them. Full detail: [`tests/eval/README.md`](./tests/eval/README.md)
 and issue #15.
 
+### Reporting a confirmed false positive or an escaped production bug
+
+1. Add a minimal fixture under `tests/eval/<lang>/seen/` (a `Bug*`/`bug_*` source for a
+   real defect, or a `Clean*`/`clean_*` near-miss for a false positive).
+2. Author its `.expected` sidecar: `<line>:<category>` per defect; an **empty** file for
+   a clean fixture. Categories come from `detect.sh eval-categories <lang>`.
+3. (Optional) add/adjust the profile check that should catch it — net-new checks stay at
+   **Medium** confidence (High is tool-confirmed only).
+4. Open a PR. `tests/eval/` is CODEOWNERS-protected; a maintainer reviews the ground
+   truth. The completeness critic may DRAFT fixtures into `tests/eval/_proposals/`, but
+   a human always authors the `.expected` label and merges via PR.
+
+The loop-closing harness (`detect.sh eval-run`) that scores the corpus end-to-end is
+**maintainer-run** (manual `workflow_dispatch` or local), never on PR. A green eval means
+the change *didn't get worse* against the corpus — not that it got better at the real job.
+
 ## Pull requests
 
 Open PRs against `dev`. The PR template's checklist mirrors what reviewers (and CI)
