@@ -27,14 +27,29 @@ jobs:
       - uses: actions/checkout@v4    # checks out the dispatched (trusted) ref
       - name: Install bats + jq
         run: sudo apt-get update && sudo apt-get install -y bats jq
-      - name: Install codex (eval runner)
+      - name: Set up Node (for the codex CLI)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install + authenticate codex CLI
+        # codex is the npm package @openai/codex; it authenticates from an API key on
+        # stdin (`codex login --with-api-key`). The OPENAI_API_KEY secret must be set on
+        # the `eval-run` Environment (see README "Optional analyzers"/eval docs). Pinned
+        # to the version this repo is validated against; bump deliberately.
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
-          echo "::error::Provision the codex CLI + auth here (org-specific), then remove this guard."
-          exit 1
+          if [ -z "${OPENAI_API_KEY:-}" ]; then
+            echo "::error::OPENAI_API_KEY secret is not set on the eval-run Environment"; exit 1
+          fi
+          npm install -g @openai/codex@0.139.0
+          codex --version
+          printenv OPENAI_API_KEY | codex login --with-api-key
+          codex login status
       - name: Run the eval harness
         env:
           DEFECT_SCAN_EVAL_RUNNER: tests/eval/runners/codex.sh
-          CODEX_API_KEY: ${{ secrets.CODEX_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           sh skills/scan/lib/detect.sh eval-run "${{ inputs.lang }}" \
             --runs "${{ inputs.runs }}" --split "${{ inputs.split }}"
