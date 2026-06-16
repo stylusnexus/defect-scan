@@ -116,6 +116,14 @@ from the last run's `.last-run` artifact, with no model in the loop.
   `noise_band`, `overfit_band`. Regenerate it with `eval-run --update-baseline`, then
   commit the change through a **CODEOWNERS-reviewed PR** (this is moving the bar — it
   gets the same scrutiny as the ground truth).
+  - **Calibration.** `precision_baseline`/`recall_baseline` are **measured** from real
+    `eval-run` passes (not hand-tuned); the hard `*_floor` values stay conservative
+    until a larger sweep justifies tightening them (a separate deliberate edit). A
+    language with no measured baseline yet carries placeholder floors (`0.80`/`0.50`).
+    Recalibrate when a profile materially changes — and only trust `--update-baseline`
+    output from a run whose findings used the language's valid label set (see
+    `eval-categories`); a label mismatch depresses the measured numbers, so don't bake
+    those in.
 - **`.last-run.<split>.txt`** — a **gitignored, transient** artifact from the most recent
   `eval-run`; it's what `eval-gaps` reads. Don't commit it.
 
