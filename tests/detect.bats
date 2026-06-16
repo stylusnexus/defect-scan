@@ -1380,4 +1380,10 @@ EOF
   done
   grep -q -- "--sandbox read-only" "$root/tests/eval/runners/codex.sh"
   grep -Eq -- "--(permission-mode|allowedTools|disallowedTools)" "$root/tests/eval/runners/claude.sh"
+  # the eval block contract must be INLINE in each runner (not a file reference the
+  # scanned temp dir can't see)
+  grep -q "<<<EVAL" "$root/tests/eval/runners/claude.sh"
+  grep -q "<<<EVAL" "$root/tests/eval/runners/codex.sh"
+  ! grep -q "Follow eval-mode.md" "$root/tests/eval/runners/claude.sh"
+  ! grep -q "Follow eval-mode.md" "$root/tests/eval/runners/codex.sh"
 }
