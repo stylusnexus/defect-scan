@@ -125,8 +125,12 @@ or add a defect pattern. To extend defect-scan *privately* (no PR), see
 (private reporting — don't open a public issue).
 
 CI runs the bats suite, a POSIX-shell syntax check, and a gitleaks secret scan on
-every PR. Scan quality is measured against a labeled corpus (`tests/eval/`); the
-loop-closing harness that scores it is **maintainer-run** (manual, not on PR), and a
+every PR. Scan quality is measured against a labeled corpus (`tests/eval/`) by a
+model-free **validator** (`detect.sh eval`) and a **loop-closing harness**
+(`detect.sh eval-run` / `eval-gaps` / `eval-categories`) — see
+**[`tests/eval/README.md`](./tests/eval/README.md)** for how to run it, the
+precision-first scoring (±2 line tolerance, 1:1 matching), baselines, and the
+completeness critic. The harness is **maintainer-run** (manual, not on PR), and a
 green eval means the change *didn't get worse*, not that it got better at the real job.
 Releases are automated: [release-please](https://github.com/googleapis/release-please)
 generates [CHANGELOG.md](./CHANGELOG.md) and bumps the version from Conventional
