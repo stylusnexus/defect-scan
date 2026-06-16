@@ -361,10 +361,40 @@ cmd_eval() {
     p="${ln%%:*}"; rest="${ln#*:}"
     printf '%s:%s\n' "$(basename "$p")" "$rest"
   done < "$findings" | sort -u > "$act"
-  tp=$(comm -12 "$exp" "$act" | grep -c . || true)
-  fp=$(comm -13 "$exp" "$act" | grep -c . || true)
-  fn=$(comm -23 "$exp" "$act" | grep -c . || true)
+  # Match with ±N line tolerance, 1:1 within (basename, category) buckets.
+  # N is a COMMITTED CONSTANT — do NOT make it a runtime/env knob (a tunable ruler
+  # is a gameable ruler). Widen only via a CODEOWNERS-reviewed change here.
+  # exp/act lines are "basename:line:category"; basenames/categories carry no ':'.
+  result="$(
+    { awk -F: '{print "E\t"$1"\t"$3"\t"$2}' "$exp"
+      awk -F: '{print "A\t"$1"\t"$3"\t"$2}' "$act"; } \
+    | awk -F'\t' '
+      BEGIN { N=2 }   # line tolerance (committed constant)
+      { key=$2 SUBSEP $3; keys[key]=1
+        if ($1=="E") { ec[key]++; el[key,ec[key]]=$4+0 }
+        else         { ac[key]++; al[key,ac[key]]=$4+0 } }
+      END {
+        tp=0; fp=0; fn=0
+        for (k in keys) {
+          ne=ec[k]+0; na=ac[k]+0
+          for(i=2;i<=ne;i++){v=el[k,i];j=i-1;while(j>=1&&el[k,j]>v){el[k,j+1]=el[k,j];j--}el[k,j+1]=v}
+          for(i=2;i<=na;i++){v=al[k,i];j=i-1;while(j>=1&&al[k,j]>v){al[k,j+1]=al[k,j];j--}al[k,j+1]=v}
+          for(i=1;i<=ne;i++){
+            best=0; bestd=N+1
+            for(j=1;j<=na;j++){
+              if(m[k,j]) continue
+              d=al[k,j]-el[k,i]; if(d<0)d=-d
+              if(d<=N && d<bestd){bestd=d; best=j}
+            }
+            if(best){m[k,best]=1; tp++} else fn++
+          }
+          for(j=1;j<=na;j++) if(!m[k,j]) fp++
+        }
+        printf "%d %d %d\n", tp, fp, fn
+      }'
+  )"
   rm -f "$exp" "$act"
+  tp="${result%% *}"; rest="${result#* }"; fp="${rest%% *}"; fn="${rest##* }"
   awk -v tp="$tp" -v fp="$fp" -v fn="$fn" 'BEGIN{
     p = (tp+fp)>0 ? tp/(tp+fp) : 1
     r = (tp+fn)>0 ? tp/(tp+fn) : 1

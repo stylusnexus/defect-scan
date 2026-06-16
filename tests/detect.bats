@@ -114,6 +114,63 @@ setup() {
   [[ "$output" == *"not found"* ]]
 }
 
+_mk_grader_corpus() {  # $1=dir : one buggy fixture (line 4, cat#2) + one clean
+  mkdir -p "$1"
+  printf 'x\n' > "$1/bug.ext"; printf '4:cat#2\n' > "$1/bug.ext.expected"
+  printf 'x\n' > "$1/clean.ext"; : > "$1/clean.ext.expected"
+}
+
+@test "grader: off-by-one line is a true positive (tolerance)" {
+  d="$BATS_TEST_TMPDIR/g"; _mk_grader_corpus "$d"
+  printf 'bug.ext:3:cat#2\n' > "$BATS_TEST_TMPDIR/f"      # expected 4, reported 3
+  run "$DETECT" eval "$d" "$BATS_TEST_TMPDIR/f"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"tp=1"* ]] && [[ "$output" == *"fp=0"* ]] && [[ "$output" == *"fn=0"* ]]
+}
+
+@test "grader: off-by-three line is FP+FN (beyond tolerance)" {
+  d="$BATS_TEST_TMPDIR/g"; _mk_grader_corpus "$d"
+  printf 'bug.ext:7:cat#2\n' > "$BATS_TEST_TMPDIR/f"      # |7-4|=3 > 2
+  run "$DETECT" eval "$d" "$BATS_TEST_TMPDIR/f"
+  [[ "$output" == *"tp=0"* ]] && [[ "$output" == *"fp=1"* ]] && [[ "$output" == *"fn=1"* ]]
+}
+
+@test "grader: a spray near one expected scores ONE tp + rest fp (precision-first)" {
+  d="$BATS_TEST_TMPDIR/g"; _mk_grader_corpus "$d"
+  printf 'bug.ext:3:cat#2\nbug.ext:5:cat#2\n' > "$BATS_TEST_TMPDIR/f"   # both within ±2 of 4
+  run "$DETECT" eval "$d" "$BATS_TEST_TMPDIR/f"
+  [[ "$output" == *"tp=1"* ]] && [[ "$output" == *"fp=1"* ]] && [[ "$output" == *"fn=0"* ]]
+}
+
+@test "grader: wrong category within tolerance does NOT match" {
+  d="$BATS_TEST_TMPDIR/g"; _mk_grader_corpus "$d"
+  printf 'bug.ext:4:cat#3\n' > "$BATS_TEST_TMPDIR/f"      # right line, wrong category
+  run "$DETECT" eval "$d" "$BATS_TEST_TMPDIR/f"
+  [[ "$output" == *"tp=0"* ]] && [[ "$output" == *"fp=1"* ]] && [[ "$output" == *"fn=1"* ]]
+}
+
+@test "grader: any finding on a clean fixture is an FP (tripwire intact)" {
+  d="$BATS_TEST_TMPDIR/g"; _mk_grader_corpus "$d"
+  printf 'clean.ext:2:cat#2\n' > "$BATS_TEST_TMPDIR/f"
+  run "$DETECT" eval "$d" "$BATS_TEST_TMPDIR/f"
+  [[ "$output" == *"fp=1"* ]]
+}
+
+@test "grader: exact-duplicate findings do not double-count" {
+  d="$BATS_TEST_TMPDIR/g"; _mk_grader_corpus "$d"
+  printf 'bug.ext:4:cat#2\nbug.ext:4:cat#2\n' > "$BATS_TEST_TMPDIR/f"
+  run "$DETECT" eval "$d" "$BATS_TEST_TMPDIR/f"
+  [[ "$output" == *"tp=1"* ]] && [[ "$output" == *"fp=0"* ]]
+}
+
+@test "grader: two same-category defects far apart both match their nearest" {
+  d="$BATS_TEST_TMPDIR/g2"; mkdir -p "$d"
+  printf 'x\n' > "$d/two.ext"; printf '10:cat#2\n50:cat#2\n' > "$d/two.ext.expected"
+  printf 'two.ext:11:cat#2\ntwo.ext:49:cat#2\n' > "$BATS_TEST_TMPDIR/f"
+  run "$DETECT" eval "$d" "$BATS_TEST_TMPDIR/f"
+  [[ "$output" == *"tp=2"* ]] && [[ "$output" == *"fp=0"* ]] && [[ "$output" == *"fn=0"* ]]
+}
+
 @test "usage lists the eval subcommand" {
   run "$DETECT" bogus
   [[ "$output" == *"eval"* ]]
