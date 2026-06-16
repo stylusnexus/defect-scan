@@ -30,9 +30,18 @@ detect.sh eval tests/eval/python/seen <findings-file>
 # → precision=… recall=… tp=… fp=… fn=…
 ```
 
-Matching is by fixture **basename**:line:category, so score one dir at a time. The
-scorer is deterministic and model-free — that's deliberate: the thing that judges
-improvement must not be the thing being improved.
+Matching is by fixture **basename** + **category**, with a **±2 line tolerance** and
+strict **1:1** assignment: a finding is a true positive when it hits the same fixture
+and category within 2 lines of the labelled line. Real models attribute a multi-line
+defect (an empty `try/catch`, an unclosed resource) a line or two off from the label;
+exact-line matching would score a correct find as both a false positive and a false
+negative. The 1:1 rule keeps it honest — a *spray* of findings near one label scores
+**one** TP and the rest as FPs, so noise is still punished. The `±2` is a committed
+constant in `cmd_eval` (no runtime knob — a tunable ruler is a gameable ruler); widen
+it only via a CODEOWNERS-reviewed change. Clean fixtures have no labelled lines, so
+the tolerance never applies — any finding on a clean fixture is still a false positive.
+Score one dir at a time. The scorer is deterministic and model-free — that's
+deliberate: the thing that judges improvement must not be the thing being improved.
 
 ## How to use it (precision-first)
 
@@ -75,6 +84,17 @@ uses your existing `codex login`; `claude.sh` uses your local `claude`. In CI, t
 repo's **`eval-run` Environment** (the same Environment gates the run behind required
 reviewers, so the secret is never exposed to an unapproved dispatch). The workflow only
 runs from `main`/`dev` (trusted-ref guard) and fails loudly if the secret is missing.
+
+**Pick a runner whose model actually executes the scan.** The runner has to *run*
+`/defect-scan:scan`, not just plan it. If your Codex is configured planning/verify-only
+(e.g. a global `AGENTS.md` that forbids running commands — a common personal setup, since
+Codex is also used here for read-only review), `codex.sh` will refuse and hand off; use
+`claude.sh` instead. `codex.sh` is the right default in environments where Codex executes.
+
+**Cost.** Each fixture is a full model scan session — empirically **~90s/fixture**. A
+language has ~6 fixtures, so one run of one language is ~10 min; a real baseline
+(`--runs 5` across all 13 languages, ~390 scans) is **multiple hours**. Treat a full
+baseline sweep as a deliberate, batched (or overnight) job, not an inline command.
 
 ### Reading the corpus the way the grader does
 
