@@ -1386,4 +1386,8 @@ EOF
   grep -q "<<<EVAL" "$root/tests/eval/runners/codex.sh"
   ! grep -q "Follow eval-mode.md" "$root/tests/eval/runners/claude.sh"
   ! grep -q "Follow eval-mode.md" "$root/tests/eval/runners/codex.sh"
+  # each runner must inject the language's valid label set (eval-categories) so the
+  # model emits grader-matchable labels instead of synonyms (panic vs unwrap-panic)
+  grep -q "eval-categories" "$root/tests/eval/runners/claude.sh"
+  grep -q "eval-categories" "$root/tests/eval/runners/codex.sh"
 }
