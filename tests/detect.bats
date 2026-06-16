@@ -1386,4 +1386,30 @@ EOF
   grep -q "<<<EVAL" "$root/tests/eval/runners/codex.sh"
   ! grep -q "Follow eval-mode.md" "$root/tests/eval/runners/claude.sh"
   ! grep -q "Follow eval-mode.md" "$root/tests/eval/runners/codex.sh"
+  # each runner must inject the language's valid label set (eval-categories) so the
+  # model emits grader-matchable labels instead of synonyms (panic vs unwrap-panic)
+  grep -q "eval-categories" "$root/tests/eval/runners/claude.sh"
+  grep -q "eval-categories" "$root/tests/eval/runners/codex.sh"
+}
+
+@test "scripts/eval-run wrapper forwards to detect.sh eval-run" {
+  root="$BATS_TEST_DIRNAME/.."
+  [ -x "$root/scripts/eval-run" ]
+  sh -n "$root/scripts/eval-run"
+  c="$BATS_TEST_TMPDIR/c"; _mk_eval_corpus "$c" foo
+  DEFECT_SCAN_EVAL_CORPUS="$c" \
+  DEFECT_SCAN_EVAL_RUNNER="$BATS_TEST_DIRNAME/fixtures/eval-runner-stub" \
+  DEFECT_SCAN_STUB_MODE=perfect \
+    run "$root/scripts/eval-run" foo --runs 1
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"mean_precision=1.00"* ]]
+}
+
+@test "scripts/eval-run exits 3 when no runner is set and none is installed" {
+  # only meaningful where neither model CLI exists (e.g. CI); the wrapper auto-selects otherwise
+  command -v claude >/dev/null 2>&1 && skip "claude present (wrapper auto-selects)"
+  command -v codex  >/dev/null 2>&1 && skip "codex present (wrapper auto-selects)"
+  root="$BATS_TEST_DIRNAME/.."
+  run env -u DEFECT_SCAN_EVAL_RUNNER "$root/scripts/eval-run" foo
+  [ "$status" -eq 3 ]
 }

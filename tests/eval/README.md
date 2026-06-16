@@ -5,6 +5,64 @@ scanner better — or just louder. This is the spine of safe self-improvement (i
 #15): the grader (`detect.sh eval`) is model-free and lives in git, separate from the
 markdown the model reads, so improvement is measurable and can't silently regress.
 
+## How the full eval works
+
+The eval has **four parts** — three model-free `detect.sh` subcommands plus a swappable
+runner that is the *only* part that calls a model:
+
+| Part | What it is | Model? |
+|------|-----------|--------|
+| **Validator** — `detect.sh eval` | Scores a findings list against the corpus → precision/recall/tp/fp/fn | **No** (deterministic) |
+| **Harness** — `detect.sh eval-run` | Drives a real scan over the corpus, scores it, aggregates, gates vs baseline | **No** (orchestrator; calls the runner) |
+| **Completeness critic** — `detect.sh eval-gaps` | Per-category coverage report from the last run | **No** |
+| **Runner** — `tests/eval/runners/*.sh` | Runs the actual scan on one fixture, emits a `<<<EVAL>>>` block | **Yes** — and it lives *outside* the engine |
+
+Data flow for one `eval-run <lang>`:
+
+```
+  corpus fixture ─▶ runner (claude.sh / codex.sh)         [the only model call]
+                      │  scans it read-only; is told the
+                      │  valid label set (eval-categories)
+                      ▼
+                 <<<EVAL                                   stdout
+                 file:line:category                        (sentinel block)
+                 EVAL>>>
+                      │  extract_eval_block (strict: exactly one block; missing ≠ empty)
+                      ▼
+            accumulate all fixtures ─▶ detect.sh eval  ──▶ precision / recall  (±2 line
+            into one findings file       (the Validator)     tolerance, 1:1 match)
+                      │
+                      ▼
+          aggregate mean±stddev over N runs ─▶ gate vs baseline.<split>.txt
+                      │                          (FAIL / WARN / FLAG / PASS)
+                      ▼
+            write .last-run.<split>.txt  ──▶ detect.sh eval-gaps  (coverage critic)
+```
+
+**Why it's safe (the load-bearing properties):**
+- **The engine never calls a model.** `detect.sh` (validator + harness + critic) is
+  deterministic POSIX `sh`; the model lives only in the runner, outside `lib/`. So the
+  thing that *judges* improvement is separate from the thing being improved — it can't
+  optimize its own ruler. The runner is **injected, never hardcoded** — selected by the
+  `DEFECT_SCAN_EVAL_RUNNER` env var (a path to a runner script; `scripts/eval-run`
+  auto-selects one, `detect.sh eval-run` requires it and exits 3 if unset). That
+  injection is precisely what keeps the engine model-agnostic.
+- **Precision-first.** A false positive costs more than a miss (findings can auto-file
+  issues / auto-fix). Clean fixtures (empty `.expected`) are the false-positive
+  tripwire — any finding on one is an FP; the ±2 tolerance never applies to them. The
+  ±2 line tolerance + 1:1 matching absorbs real models' line-attribution wobble without
+  rewarding a spray of guesses (a spray near one label = 1 TP + the rest FP).
+- **Human-gated write path.** Ground truth (`.expected`) and the bar (`baseline.*.txt`)
+  only change through a **CODEOWNERS-reviewed PR**. The completeness critic may *draft*
+  fixtures into `_proposals/`, but a human authors the label. There is no runtime
+  learning store (that would be the prompt-injection surface #15 rejects).
+- **Overfitting guard.** `--split all` scores `seen` vs `held-out` separately and FLAGs
+  a gap beyond `overfit_band` — a profile tuned to memorized fixtures shows up here.
+- **Honest about itself.** A green eval means "didn't get worse" against this corpus,
+  not "better at the real job." It's a regression floor, not a proof of quality.
+
+The rest of this doc is the operational reference for each part.
+
 ## Layout
 
 ```
@@ -60,16 +118,36 @@ and gate the result against a committed baseline. It is **maintainer-run** (a ma
 `workflow_dispatch` or local invocation), never on PR, because each run executes a real
 model over the corpus.
 
-```sh
-# Pick a runner first — eval-run exits 3 if DEFECT_SCAN_EVAL_RUNNER is unset.
-export DEFECT_SCAN_EVAL_RUNNER=tests/eval/runners/codex.sh   # default; read-only sandbox
-# or:  DEFECT_SCAN_EVAL_RUNNER=tests/eval/runners/claude.sh  # read-only tool policy
+**Every run involves two separate choices — don't conflate them:**
 
-detect.sh eval-run python                       # one run over the seen split, gate vs baseline
-detect.sh eval-run python --runs 5              # average 5 runs → mean ± stddev
-detect.sh eval-run python --split held-out      # score the overfitting-guard split
-detect.sh eval-run python --split all           # seen ∪ held-out
-detect.sh eval-run python --update-baseline     # rewrite baseline.<split>.txt from this run
+| | What it is | How you set it |
+|---|---|---|
+| **Language** (`<lang>`) | *Which corpus to scan against* — `python`, `java`, … (the thing being measured) | The positional argument; **always required**, e.g. `eval-run python` |
+| **Runner** (`DEFECT_SCAN_EVAL_RUNNER`) | *Which AI engine performs the scan* — `claude` vs `codex` (`tests/eval/runners/*.sh`) | An env var. `scripts/eval-run` auto-selects one; calling `detect.sh` directly requires you to `export` it (else it exits 3) |
+
+(Analogy: the **language is the exam paper**; the **runner is which student sits it**. You always name the paper; the runner just chooses whether Claude or Codex takes the exam.)
+
+The easiest entry point is the **`scripts/eval-run`** wrapper — it locates `detect.sh`
+and auto-selects a runner (prefers `claude`, falls back to `codex`) if you haven't set
+one, then forwards every flag through:
+
+```sh
+scripts/eval-run python                       # one run over the seen split, gate vs baseline
+scripts/eval-run python --runs 5              # average 5 runs → mean ± stddev
+scripts/eval-run python --split held-out      # score the overfitting-guard split
+scripts/eval-run python --split all           # seen ∪ held-out
+scripts/eval-run python --update-baseline     # rewrite baseline.<split>.txt from this run
+
+# Override the auto-selected runner when you need a specific one:
+DEFECT_SCAN_EVAL_RUNNER=tests/eval/runners/codex.sh scripts/eval-run rust
+```
+
+Or call the engine directly (you must set the runner yourself — `eval-run` exits 3 if
+`DEFECT_SCAN_EVAL_RUNNER` is unset):
+
+```sh
+export DEFECT_SCAN_EVAL_RUNNER=tests/eval/runners/claude.sh   # or .../codex.sh
+skills/scan/lib/detect.sh eval-run python --runs 5
 ```
 
 `eval-run` runs the scan via the selected runner, scores each run with the model-free
@@ -116,6 +194,14 @@ from the last run's `.last-run` artifact, with no model in the loop.
   `noise_band`, `overfit_band`. Regenerate it with `eval-run --update-baseline`, then
   commit the change through a **CODEOWNERS-reviewed PR** (this is moving the bar — it
   gets the same scrutiny as the ground truth).
+  - **Calibration.** `precision_baseline`/`recall_baseline` are **measured** from real
+    `eval-run` passes (not hand-tuned); the hard `*_floor` values stay conservative
+    until a larger sweep justifies tightening them (a separate deliberate edit). A
+    language with no measured baseline yet carries placeholder floors (`0.80`/`0.50`).
+    Recalibrate when a profile materially changes — and only trust `--update-baseline`
+    output from a run whose findings used the language's valid label set (see
+    `eval-categories`); a label mismatch depresses the measured numbers, so don't bake
+    those in.
 - **`.last-run.<split>.txt`** — a **gitignored, transient** artifact from the most recent
   `eval-run`; it's what `eval-gaps` reads. Don't commit it.
 
