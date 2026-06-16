@@ -68,6 +68,14 @@ grader, aggregates `mean ± stddev` across `--runs`, and **gates** the result ag
 baseline (precision/recall floors, plus noise/overfit bands). Both runners are read-only:
 `codex.sh` runs in a read-only sandbox, `claude.sh` under a read-only tool policy.
 
+**Credentials.** The runners drive a real model and need auth. Locally, `codex.sh`
+uses your existing `codex login`; `claude.sh` uses your local `claude`. In CI, the
+`.github/workflows/eval-run.yml` job installs `@openai/codex` and runs
+`codex login --with-api-key` from an **`OPENAI_API_KEY` secret** that you must add to the
+repo's **`eval-run` Environment** (the same Environment gates the run behind required
+reviewers, so the secret is never exposed to an unapproved dispatch). The workflow only
+runs from `main`/`dev` (trusted-ref guard) and fails loudly if the secret is missing.
+
 ### Reading the corpus the way the grader does
 
 ```sh
