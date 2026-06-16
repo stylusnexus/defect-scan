@@ -115,6 +115,15 @@ and gate the result against a committed baseline. It is **maintainer-run** (a ma
 `workflow_dispatch` or local invocation), never on PR, because each run executes a real
 model over the corpus.
 
+**Every run involves two separate choices — don't conflate them:**
+
+| | What it is | How you set it |
+|---|---|---|
+| **Language** (`<lang>`) | *Which corpus to scan against* — `python`, `java`, … (the thing being measured) | The positional argument; **always required**, e.g. `eval-run python` |
+| **Runner** (`DEFECT_SCAN_EVAL_RUNNER`) | *Which AI engine performs the scan* — `claude` vs `codex` (`tests/eval/runners/*.sh`) | An env var. `scripts/eval-run` auto-selects one; calling `detect.sh` directly requires you to `export` it (else it exits 3) |
+
+(Analogy: the **language is the exam paper**; the **runner is which student sits it**. You always name the paper; the runner just chooses whether Claude or Codex takes the exam.)
+
 The easiest entry point is the **`scripts/eval-run`** wrapper — it locates `detect.sh`
 and auto-selects a runner (prefers `claude`, falls back to `codex`) if you haven't set
 one, then forwards every flag through:
