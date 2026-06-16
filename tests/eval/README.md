@@ -43,7 +43,10 @@ Data flow for one `eval-run <lang>`:
 - **The engine never calls a model.** `detect.sh` (validator + harness + critic) is
   deterministic POSIX `sh`; the model lives only in the runner, outside `lib/`. So the
   thing that *judges* improvement is separate from the thing being improved — it can't
-  optimize its own ruler.
+  optimize its own ruler. The runner is **injected, never hardcoded** — selected by the
+  `DEFECT_SCAN_EVAL_RUNNER` env var (a path to a runner script; `scripts/eval-run`
+  auto-selects one, `detect.sh eval-run` requires it and exits 3 if unset). That
+  injection is precisely what keeps the engine model-agnostic.
 - **Precision-first.** A false positive costs more than a miss (findings can auto-file
   issues / auto-fix). Clean fixtures (empty `.expected`) are the false-positive
   tripwire — any finding on one is an FP; the ±2 tolerance never applies to them. The
