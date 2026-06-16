@@ -10,6 +10,19 @@ commit messages instead (`feat:`, `fix:`, `perf:`, `docs:` … show up; `chore:`
 are hidden by default). The release commit and this file are back-merged `main → dev`
 by the deploy flow so history stays aligned.
 
+## [1.7.0](https://github.com/stylusnexus/defect-scan/compare/v1.6.1...v1.7.0) (2026-06-16)
+
+
+### Features
+
+* **eval:** loop-closing harness + completeness critic ([#15](https://github.com/stylusnexus/defect-scan/issues/15) Phase 2) ([#52](https://github.com/stylusnexus/defect-scan/issues/52)) ([79592da](https://github.com/stylusnexus/defect-scan/commit/79592da6c17aec329d4f16386db2b998df972949))
+* **eval:** self-improving eval harness — loop-closing runner, ±2-tolerance grader, completeness critic ([#15](https://github.com/stylusnexus/defect-scan/issues/15)) ([f3685fe](https://github.com/stylusnexus/defect-scan/commit/f3685fefee9a5018328894188f1a1e788b78fe55))
+
+
+### Bug Fixes
+
+* **eval:** ±2 line-tolerance grader + working runners ([#15](https://github.com/stylusnexus/defect-scan/issues/15)) ([#54](https://github.com/stylusnexus/defect-scan/issues/54)) ([3d60c6d](https://github.com/stylusnexus/defect-scan/commit/3d60c6dee18f680e00f4c3d4037356be6f3c4b85))
+
 ## [1.6.1](https://github.com/stylusnexus/defect-scan/compare/v1.6.0...v1.6.1) (2026-06-15)
 
 
