@@ -10,6 +10,19 @@ commit messages instead (`feat:`, `fix:`, `perf:`, `docs:` … show up; `chore:`
 are hidden by default). The release commit and this file are back-merged `main → dev`
 by the deploy flow so history stays aligned.
 
+## [1.8.0](https://github.com/stylusnexus/defect-scan/compare/v1.7.0...v1.8.0) (2026-06-16)
+
+
+### Features
+
+* **eval:** eval-run shortcut + runner label injection, calibrated baselines, full eval docs ([#15](https://github.com/stylusnexus/defect-scan/issues/15)) ([bbe0343](https://github.com/stylusnexus/defect-scan/commit/bbe034377fb6e1d81f2db7ef1d34b73084186737))
+* **eval:** scripts/eval-run wrapper (auto-selects runner) + docs ([#15](https://github.com/stylusnexus/defect-scan/issues/15)) ([#63](https://github.com/stylusnexus/defect-scan/issues/63)) ([b4551d9](https://github.com/stylusnexus/defect-scan/commit/b4551d90f5eb1a1c99da220f0aad8f56d2841877))
+
+
+### Bug Fixes
+
+* **eval:** runner label injection + measured baselines for rust/shell/yaml/swift ([#15](https://github.com/stylusnexus/defect-scan/issues/15)) ([#67](https://github.com/stylusnexus/defect-scan/issues/67)) ([272f773](https://github.com/stylusnexus/defect-scan/commit/272f773bf374a04b021dff8a0b51b47a54d2ab36))
+
 ## [1.7.0](https://github.com/stylusnexus/defect-scan/compare/v1.6.1...v1.7.0) (2026-06-16)
 
 
