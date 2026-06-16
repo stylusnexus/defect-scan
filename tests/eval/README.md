@@ -5,6 +5,61 @@ scanner better — or just louder. This is the spine of safe self-improvement (i
 #15): the grader (`detect.sh eval`) is model-free and lives in git, separate from the
 markdown the model reads, so improvement is measurable and can't silently regress.
 
+## How the full eval works
+
+The eval has **four parts** — three model-free `detect.sh` subcommands plus a swappable
+runner that is the *only* part that calls a model:
+
+| Part | What it is | Model? |
+|------|-----------|--------|
+| **Validator** — `detect.sh eval` | Scores a findings list against the corpus → precision/recall/tp/fp/fn | **No** (deterministic) |
+| **Harness** — `detect.sh eval-run` | Drives a real scan over the corpus, scores it, aggregates, gates vs baseline | **No** (orchestrator; calls the runner) |
+| **Completeness critic** — `detect.sh eval-gaps` | Per-category coverage report from the last run | **No** |
+| **Runner** — `tests/eval/runners/*.sh` | Runs the actual scan on one fixture, emits a `<<<EVAL>>>` block | **Yes** — and it lives *outside* the engine |
+
+Data flow for one `eval-run <lang>`:
+
+```
+  corpus fixture ─▶ runner (claude.sh / codex.sh)         [the only model call]
+                      │  scans it read-only; is told the
+                      │  valid label set (eval-categories)
+                      ▼
+                 <<<EVAL                                   stdout
+                 file:line:category                        (sentinel block)
+                 EVAL>>>
+                      │  extract_eval_block (strict: exactly one block; missing ≠ empty)
+                      ▼
+            accumulate all fixtures ─▶ detect.sh eval  ──▶ precision / recall  (±2 line
+            into one findings file       (the Validator)     tolerance, 1:1 match)
+                      │
+                      ▼
+          aggregate mean±stddev over N runs ─▶ gate vs baseline.<split>.txt
+                      │                          (FAIL / WARN / FLAG / PASS)
+                      ▼
+            write .last-run.<split>.txt  ──▶ detect.sh eval-gaps  (coverage critic)
+```
+
+**Why it's safe (the load-bearing properties):**
+- **The engine never calls a model.** `detect.sh` (validator + harness + critic) is
+  deterministic POSIX `sh`; the model lives only in the runner, outside `lib/`. So the
+  thing that *judges* improvement is separate from the thing being improved — it can't
+  optimize its own ruler.
+- **Precision-first.** A false positive costs more than a miss (findings can auto-file
+  issues / auto-fix). Clean fixtures (empty `.expected`) are the false-positive
+  tripwire — any finding on one is an FP; the ±2 tolerance never applies to them. The
+  ±2 line tolerance + 1:1 matching absorbs real models' line-attribution wobble without
+  rewarding a spray of guesses (a spray near one label = 1 TP + the rest FP).
+- **Human-gated write path.** Ground truth (`.expected`) and the bar (`baseline.*.txt`)
+  only change through a **CODEOWNERS-reviewed PR**. The completeness critic may *draft*
+  fixtures into `_proposals/`, but a human authors the label. There is no runtime
+  learning store (that would be the prompt-injection surface #15 rejects).
+- **Overfitting guard.** `--split all` scores `seen` vs `held-out` separately and FLAGs
+  a gap beyond `overfit_band` — a profile tuned to memorized fixtures shows up here.
+- **Honest about itself.** A green eval means "didn't get worse" against this corpus,
+  not "better at the real job." It's a regression floor, not a proof of quality.
+
+The rest of this doc is the operational reference for each part.
+
 ## Layout
 
 ```
