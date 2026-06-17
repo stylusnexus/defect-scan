@@ -112,9 +112,11 @@ supply-chain pattern pack's coverage against the `supply-chain` corpus — use:
 scripts/eval-run supply-chain --as generic   # scan the supply-chain corpus with the generic profile
 ```
 
-The `--as <profile>` flag is forwarded to the runner as `DEFECT_SCAN_EVAL_PROFILE` and
-overrides the profile the scan would otherwise auto-detect. Use it to compare how
-different profiles score against the same labeled fixtures, not to make routine runs.
+The `--as <profile>` flag is passed to the runner as its **third positional argument**
+(the runner reads it as `scan_profile`, defaulting to the corpus name when absent) and
+overrides the profile the scan would otherwise auto-detect — distinct from the corpus
+name, which selects the label set. Use it to compare how different profiles score against
+the same labeled fixtures, not to make routine runs.
 
 ## Scoring
 

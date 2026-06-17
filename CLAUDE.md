@@ -82,8 +82,9 @@ The corpus supports a **multi-file directory-fixture format** (used by the
 `supply-chain` corpus): a case can be a directory `<case>/` (a mini-repo) with a
 sibling `<case>.expected` whose lines are `<relpath>:<line>:<cat>` — the grader keys
 findings by `<case>/<relpath>`. `eval-run --as <profile>` overrides the auto-detected
-profile for a run (forwarded as `DEFECT_SCAN_EVAL_PROFILE` to the runner), useful for
-measuring how a specific profile scores against a pattern-pack corpus.
+profile for a run (passed to the runner as its 3rd positional arg, `scan_profile`,
+defaulting to the corpus name), useful for measuring how a specific profile scores
+against a pattern-pack corpus.
 
 **Six baseline categories** (`baseline-categories.md`): cat#1–5 cover correctness /
 security fundamentals; **cat#6 (Supply-chain / dependency integrity, High)** covers
