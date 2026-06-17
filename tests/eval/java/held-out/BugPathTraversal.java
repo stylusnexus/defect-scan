@@ -1,6 +1,7 @@
 import java.io.*;
-class BugPathTraversal {
-  File open(String name) {
-    return new File("/data/" + name);   // user-controlled name -> traversal
-  }
+import java.nio.file.*;
+public class BugPathTraversal {
+    byte[] load(String name) throws IOException {
+        return Files.readAllBytes(Paths.get("/data/" + name));  // untrusted name -> realized path-traversal read
+    }
 }
