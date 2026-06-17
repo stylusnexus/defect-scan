@@ -1659,3 +1659,22 @@ JSON
   grep -q "detect.sh manifest" "$f"
   grep -qi "cat#6\|supply-chain" "$f"
 }
+
+@test "supply-chain corpus has labeled buggy + empty clean cases" {
+  d="$BATS_TEST_DIRNAME/../tests/eval/supply-chain/seen"
+  [ -d "$d" ]
+  grep -rq "cat#6" "$d"/*.expected
+  found_empty=0; for e in "$d"/*.expected; do [ -s "$e" ] || found_empty=1; done; [ "$found_empty" -eq 1 ]
+}
+
+@test "supply-chain corpus: each sidecar has a sibling directory and valid labels" {
+  d="$BATS_TEST_DIRNAME/../tests/eval/supply-chain/seen"
+  for e in "$d"/*.expected; do
+    base="$(basename "$e" .expected)"
+    [ -d "$d/$base" ]   # sibling mini-repo dir exists
+    while IFS= read -r ln || [ -n "$ln" ]; do
+      [ -n "$ln" ] || continue
+      echo "$ln" | grep -Eq '^[^:]+:[0-9]+:cat#6$'   # relpath:line:cat#6
+    done < "$e"
+  done
+}

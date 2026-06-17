@@ -1,0 +1,13 @@
+{
+  "name": "dependency-confusion",
+  "version": "1.0.0",
+  "description": "Fixture: internal-scope package with no private registry pin (P12)",
+  "scripts": {
+    "test": "echo ok"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "@acme-corp/auth-utils": "^2.1.0",
+    "@acme-corp/logger": "^1.0.3"
+  }
+}

