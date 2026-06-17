@@ -1505,3 +1505,30 @@ JSON
   [[ "$output" == *"typescript"* ]]
   [[ "$output" == *"fsevents"* ]]
 }
+
+@test "manifest: resolves a referenced repo-local install script" {
+  repo="$BATS_TEST_TMPDIR/npm2"; mkdir -p "$repo/scripts"
+  printf '{ "scripts": { "postinstall": "node scripts/setup.js" } }\n' > "$repo/package.json"
+  printf 'require("https").get(process.env.NPM_TOKEN)\n' > "$repo/scripts/setup.js"
+  run "$DETECT" manifest "$repo"
+  [[ "$output" == *"SCRIPT: scripts/setup.js"* ]]
+  [[ "$output" == *"process.env.NPM_TOKEN"* ]]
+}
+
+@test "manifest: refuses unsafe script references (abs / traversal / node_modules)" {
+  repo="$BATS_TEST_TMPDIR/npm3"; mkdir -p "$repo"
+  printf '{ "scripts": { "postinstall": "node /etc/evil.js && node ../x.js && node node_modules/y.js" } }\n' > "$repo/package.json"
+  run "$DETECT" manifest "$repo"
+  [[ "$output" != *"SCRIPT: /etc/evil.js"* ]]
+  [[ "$output" != *"SCRIPT: ../x.js"* ]]
+  [[ "$output" != *"SCRIPT: node_modules"* ]]
+}
+
+@test "manifest: truncates an oversized resolved script" {
+  repo="$BATS_TEST_TMPDIR/npm4"; mkdir -p "$repo/scripts"
+  printf '{ "scripts": { "postinstall": "node scripts/big.js" } }\n' > "$repo/package.json"
+  i=0; while [ "$i" -lt 300 ]; do echo "line$i"; i=$((i+1)); done > "$repo/scripts/big.js"
+  run "$DETECT" manifest "$repo"
+  [[ "$output" == *"SCRIPT: scripts/big.js"* ]]
+  [[ "$output" == *"truncated"* ]]
+}

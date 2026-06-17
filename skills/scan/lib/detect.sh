@@ -785,7 +785,33 @@ _manifest_dep_names_awk() {
   ' "$1"
 }
 
-_manifest_resolve_scripts() { : ; }   # bounded resolver implemented in Task 2.3
+# Resolve ONE level of repo-local script references in lifecycle commands. Read-only,
+# size-capped, no recursion, no node_modules, no traversal outside the repo.
+_MANIFEST_SCRIPT_MAXLINES=200
+_manifest_resolve_scripts() {
+  _repo="$1"; _pj="$2"; _jq="$3"
+  if [ -n "$_jq" ]; then
+    _cmds="$("$_jq" -r '.scripts // {} | to_entries[]
+      | select(.key|test("^(pre|post)?install$|^prepare$|^prepublishOnly$")) | .value' "$_pj" 2>/dev/null)"
+  else
+    _cmds="$(grep -oE '"[^"]*"' "$_pj")"
+  fi
+  printf '%s\n' "$_cmds" | tr ' \t' '\n\n' | while IFS= read -r tok; do
+    tok="${tok#\"}"; tok="${tok%\"}"          # strip surrounding quotes (fallback path emits them)
+    case "$tok" in
+      /*|*..*|*node_modules/*) continue ;;                 # abs / traversal / vendored → refuse
+      *.js|*.cjs|*.mjs|*.sh|./*) : ;;                       # plausible local script
+      *) continue ;;
+    esac
+    rel="${tok#./}"
+    f="$_repo/$rel"
+    [ -f "$f" ] || continue
+    echo "=== SCRIPT: $rel ==="
+    head -n "$_MANIFEST_SCRIPT_MAXLINES" "$f"
+    _n="$(wc -l < "$f" 2>/dev/null | tr -d ' ')"
+    [ "${_n:-0}" -gt "$_MANIFEST_SCRIPT_MAXLINES" ] && echo "(manifest: SCRIPT truncated at $_MANIFEST_SCRIPT_MAXLINES lines)"
+  done
+}
 
 main() {
   sub="${1:-}"; [ $# -gt 0 ] && shift || true
