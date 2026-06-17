@@ -78,6 +78,23 @@ regress the baseline — there is deliberately **no runtime learning store** (th
 be the P4 prompt-injection surface). The grader + corpus are CODEOWNERS-protected so a
 PR can't silently weaken them. See issue #15.
 
+The corpus supports a **multi-file directory-fixture format** (used by the
+`supply-chain` corpus): a case can be a directory `<case>/` (a mini-repo) with a
+sibling `<case>.expected` whose lines are `<relpath>:<line>:<cat>` — the grader keys
+findings by `<case>/<relpath>`. `eval-run --as <profile>` overrides the auto-detected
+profile for a run (forwarded as `DEFECT_SCAN_EVAL_PROFILE` to the runner), useful for
+measuring how a specific profile scores against a pattern-pack corpus.
+
+**Six baseline categories** (`baseline-categories.md`): cat#1–5 cover correctness /
+security fundamentals; **cat#6 (Supply-chain / dependency integrity, High)** covers
+malicious lifecycle scripts, typosquat/dependency-confusion, lockfile tampering, and
+install-time exfil. cat#6 findings arrive via `detect.sh manifest` — a deterministic,
+read-only hook that slices `package.json`, the lockfile, `.npmrc`, and resolves
+referenced local install scripts (bounded: one hop from lifecycle fields, no recursive
+traversal) for npm repos — and `detect.sh supply-chain-config` (reads
+`.defect-scan/supply-chain.conf`; keys: `internal_scope=` / `internal_registry=`).
+`npm audit`/`osv-scanner` known-vuln findings are also categorized cat#6.
+
 **Five stages** (`SKILL.md` is the orchestrator): detect → triage → tool pass →
 reasoning pass → report (→ fix). `--depth N` (default 20) caps how many triaged
 files get the expensive reasoning pass — this is the "rabbit-hole floor"; the rest

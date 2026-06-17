@@ -8,7 +8,10 @@ confidence tiers (correlated against the issue tracker). Report-only by default;
 
 ## Built-in languages
 14 profiles, each pairing the language's real analyzers with a reasoning checklist
-mapped to the five baseline defect categories + language-specific footguns:
+mapped to the **six baseline defect categories** + language-specific footguns (cat#1–5
+cover correctness and security fundamentals; **cat#6 — supply-chain / dependency
+integrity** — covers npm lifecycle abuse, typosquat / dependency-confusion, lockfile
+tampering, and install-time exfil, complementing `npm audit` and `osv-scanner`):
 
 | Profile | Analyzers (auto-run if installed) |
 |---|---|
@@ -98,7 +101,7 @@ across three layers, low→high precedence; higher layers shadow lower **by name
 
 | Layer | Profiles | Patterns | What belongs here |
 |-------|----------|----------|-------------------|
-| **Built-in (global)** | `skills/scan/profiles/` | `skills/scan/patterns/recurring.md` | **Generic** detections useful to *everyone* — no product/org/customer specifics. This is a public, shared plugin. |
+| **Built-in (global)** | `skills/scan/profiles/` | `skills/scan/patterns/recurring.md` · `supply-chain.md` | **Generic** detections useful to *everyone* — no product/org/customer specifics. This is a public, shared plugin. |
 | **User** (`~/.config/defect-scan/`) | `profiles/*.md` | `patterns/*.md` | Your personal rules across all your repos. |
 | **Project** (`<repo>/.defect-scan/`) | `profiles/*.md` | `patterns/*.md` | **Product/org-specific** detections — your billing rules, your naming conventions, your internal APIs. Committed with the repo, scoped to it. |
 

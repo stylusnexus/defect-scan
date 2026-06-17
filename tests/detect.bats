@@ -1687,3 +1687,10 @@ JSON
     done < "$e"
   done
 }
+
+@test "docs reflect cat#6 and multi-file fixtures" {
+  root="$BATS_TEST_DIRNAME/.."
+  grep -qi "six\|cat#6\|supply-chain" "$root/README.md"
+  ! grep -q "9 battle-tested patterns" "$root/commands/help.md"
+  grep -qi "multi-file\|fixture repo\|directory fixture" "$root/tests/eval/README.md"
+}

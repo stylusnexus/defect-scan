@@ -53,7 +53,38 @@ Scan a Ruby repo → it's detected, `.rb` files are triaged, RuboCop runs.
 ## Add your own defect patterns
 Drop `.md` files in `.defect-scan/patterns/` (team) or
 `~/.config/defect-scan/patterns/` (personal). The reasoning pass reads them
-alongside the built-in P1–P10 — encode your org's recurring bugs.
+alongside the built-in P1–P14 — encode your org's recurring bugs.
+
+### Built-in pattern pack example: `supply-chain.md`
+
+`skills/scan/patterns/supply-chain.md` is the reference example of a built-in pattern
+pack. It defines four patterns (P11–P14) that all map to **cat#6** (Supply-chain /
+dependency integrity), and shows the structure every pack should follow: a severity
+table at the top, one `## P<N>` section per pattern, and mandatory `## Adversarial
+check` sub-sections (supply-chain false positives are costly; the precision-first rule
+applies). The pattern data is fed by `detect.sh manifest` and `detect.sh
+supply-chain-config`; the patterns are pure reasoning instructions for the model.
+
+### Supply-chain internal-scope allowlist (project-layer extension point)
+
+For npm repos with an internal registry, add a project-layer allowlist so the
+supply-chain reasoning pass knows which scoped package names are expected to resolve
+to your private registry and does not flag them as dependency-confusion candidates:
+
+`.defect-scan/supply-chain.conf`:
+```
+internal_scope=@acme
+internal_registry=https://npm.acme.internal
+```
+
+Supported keys:
+| Key | Format | Effect |
+|-----|--------|--------|
+| `internal_scope` | `@scope` (one scope per key, or repeat the line) | Declares a scope that should resolve to the internal registry; scoped deps matching this that are NOT routed to `internal_registry` in the lockfile/npmrc are flagged as P12 (dependency confusion). |
+| `internal_registry` | full URL | The expected registry URL for internal scopes; `detect.sh supply-chain-config` surfaces this to the reasoning pass. |
+
+`detect.sh supply-chain-config <repo>` reads this file and emits the values; set
+`DEFECT_SCAN_NO_PROJECT=1` (or `--no-project-profiles`) to suppress it.
 
 ## Tweak a built-in profile for just your repo
 You don't have to fork core to adjust a shipped profile. Create a drop-in with the

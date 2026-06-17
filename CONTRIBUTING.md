@@ -107,8 +107,8 @@ Guidance:
 - **Toolchain** commands are resolved via `detect.sh tool <name>` (project-local →
   venv → global) and must degrade gracefully (skip-with-hint if absent). Tool output
   is High-confidence; reasoning-only findings go through adversarial verification.
-- **Reasoning checklist** should specialize the five baseline categories
-  (`skills/scan/baseline-categories.md`) plus language-specific footguns.
+- **Reasoning checklist** should specialize the six baseline categories
+  (`skills/scan/baseline-categories.md`, cat#1–cat#6) plus language-specific footguns.
 - **Auto-fix-safe** lists ONLY tool-applied, behavior-preserving fixes (never
   type-checker output or semantics-changing lint rules).
 
@@ -161,7 +161,7 @@ missed reasoning category, a better analyzer, a new file extension). You're edit
 Common enhancements:
 
 - **Add a reasoning check** — add a bullet under `## Reasoning checklist`, ideally
-  tied to a baseline category (`cat#1`–`cat#5`) or a recurring pattern (`P1`–`P10`).
+  tied to a baseline category (`cat#1`–`cat#6`) or a recurring pattern (`P1`–`P14`).
   No test wiring needed; this is pure model-side knowledge. This is the highest-value,
   lowest-risk contribution.
 - **Add or change an analyzer** — add a bullet under `## Toolchain` with the exact
@@ -185,10 +185,14 @@ the change is user-visible (e.g. a newly recommended analyzer).
 
 ## Contributing defect patterns
 
-Recurring, cross-cutting defect patterns live in `skills/scan/patterns/recurring.md`
-(P1–P10). To add one, follow the existing `## P<N>` format, give it a **default
-severity** (add it to the severity table at the top), and add it to the `P1 P2 …`
-assertion list in `tests/detect.bats`.
+Recurring, cross-cutting defect patterns live in two built-in packs:
+`skills/scan/patterns/recurring.md` (P1–P10, correctness/security) and
+`skills/scan/patterns/supply-chain.md` (P11–P14, supply-chain / dependency integrity,
+cat#6). To add a pattern to `recurring.md`, follow the existing `## P<N>` format,
+give it a **default severity** (add it to the severity table at the top), and add it
+to the `P1 P2 …` assertion list in `tests/detect.bats`. For patterns that map to
+cat#6 specifically, see `supply-chain.md` for the expected structure (including
+mandatory `## Adversarial check` sub-sections).
 
 **Litmus — does it belong here, in a profile, or in a project pack?**
 - **Here (`recurring.md`)** only if it's **language-agnostic** — the same defect
