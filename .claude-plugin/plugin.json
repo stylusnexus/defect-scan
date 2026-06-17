@@ -1,7 +1,7 @@
 {
   "name": "defect-scan",
   "description": "Language-aware defect hunter: detect stack → triage → run real analyzers → reason with battle-tested patterns → report (confidence-tiered, tracker-correlated) → fix.",
-  "version": "1.8.0",
+  "version": "1.8.1",
   "author": {
     "name": "Stylus Nexus"
   },
