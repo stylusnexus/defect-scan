@@ -10,6 +10,14 @@ commit messages instead (`feat:`, `fix:`, `perf:`, `docs:` … show up; `chore:`
 are hidden by default). The release commit and this file are back-merged `main → dev`
 by the deploy flow so history stays aligned.
 
+## [1.8.1](https://github.com/stylusnexus/defect-scan/compare/v1.8.0...v1.8.1) (2026-06-17)
+
+
+### Bug Fixes
+
+* **eval:** deterministic self-contained eval runners + sharpened java held-out corpus ([257b77d](https://github.com/stylusnexus/defect-scan/commit/257b77d5fde7b8d30edf1098b82f21c195bd937a))
+* **eval:** make eval runners self-contained for deterministic headless scoring ([#72](https://github.com/stylusnexus/defect-scan/issues/72)) ([aa57158](https://github.com/stylusnexus/defect-scan/commit/aa5715872f0f3a61abdaf34e8539357d853af373)), closes [#71](https://github.com/stylusnexus/defect-scan/issues/71)
+
 ## [1.8.0](https://github.com/stylusnexus/defect-scan/compare/v1.7.0...v1.8.0) (2026-06-16)
 
 
