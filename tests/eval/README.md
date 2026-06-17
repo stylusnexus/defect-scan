@@ -22,7 +22,8 @@ Data flow for one `eval-run <lang>`:
 ```
   corpus fixture ─▶ runner (claude.sh / codex.sh)         [the only model call]
                       │  scans it read-only; is told the
-                      │  valid label set (eval-categories)
+                      │  valid label set (eval-categories) AND
+                      │  their definitions (baseline-categories.md)
                       ▼
                  <<<EVAL                                   stdout
                  file:line:category                        (sentinel block)
