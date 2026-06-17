@@ -45,6 +45,10 @@ skills/scan/lib/detect.sh tool <name> <cwd>    # resolve an analyzer binary (exi
 skills/scan/lib/detect.sh issues <terms>       # search tracker (correlation/dedup; read; exit 3 if no gh)
 skills/scan/lib/detect.sh labels               # list repo labels (for label/priority proposal; exit 3 if no gh)
 skills/scan/lib/detect.sh issues-create <title> <body-file> [labels]   # file an issue (write; exit 3 if no gh)
+
+# Maintainer eval loop (#15) — measure, don't regress. Both model-free:
+skills/scan/lib/detect.sh eval <corpus-dir> <findings-file>   # grader: score a findings file (P/R/tp/fp/fn)
+scripts/eval-run <lang> [--runs N] [--split seen|held-out|all] [--update-baseline]   # orchestrate: scan fixtures via a runner, then grade
 ```
 
 Run a single test by description: `bats tests/detect.bats -f "triage: ranks"`.
@@ -62,11 +66,17 @@ the model. Do not push reasoning into `detect.sh`, and do not re-implement in pr
 what a `detect.sh` subcommand already provides.
 
 **Self-improvement is measured, not learned.** `tests/eval/<lang>/` is a labeled
-fixture corpus; `detect.sh eval <corpus-dir> <findings-file>` is a **model-free**
-grader (precision/recall/tp/fp/fn). Improvement happens only via human-reviewed PRs
-that add fixtures/checks and must not regress the eval — there is deliberately **no
-runtime learning store** (that would be the P4 prompt-injection surface). The grader
-+ corpus are CODEOWNERS-protected so a PR can't silently weaken them. See issue #15.
+fixture corpus; eval has two model-free layers. `detect.sh eval <corpus-dir>
+<findings-file>` is the **grader** (precision/recall/tp/fp/fn) — it scores a findings
+file, it does not run the scan. `detect.sh eval-run <lang>` (wrapper: `scripts/eval-run`)
+is the **orchestrator** — itself model-free, it scans each fixture via a *swappable*
+runner (`DEFECT_SCAN_EVAL_RUNNER` → `tests/eval/runners/{claude,codex}.sh`, the only
+place a model enters), accumulates findings, then grades the split once with `eval`
+and aggregates mean/stddev against the per-lang `baseline.{seen,held-out}.txt`.
+Improvement happens only via human-reviewed PRs that add fixtures/checks and must not
+regress the baseline — there is deliberately **no runtime learning store** (that would
+be the P4 prompt-injection surface). The grader + corpus are CODEOWNERS-protected so a
+PR can't silently weaken them. See issue #15.
 
 **Five stages** (`SKILL.md` is the orchestrator): detect → triage → tool pass →
 reasoning pass → report (→ fix). `--depth N` (default 20) caps how many triaged
