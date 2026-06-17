@@ -1459,3 +1459,49 @@ JSON
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
+
+@test "manifest fallback (no jq): extracts deps from compact JSON" {
+  repo="$BATS_TEST_TMPDIR/compact"; mkdir -p "$repo"
+  printf '%s\n' '{ "scripts": { "postinstall": "node x.js" }, "dependencies": { "left-pad": "1.0.0" }, "devDependencies": { "typescript": "5.0.0" }, "optionalDependencies": { "fsevents": "2.0.0" } }' > "$repo/package.json"
+  run env DEFECT_SCAN_NO_JQ=1 "$DETECT" manifest "$repo"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"LIFECYCLE"* ]]
+  [[ "$output" == *"postinstall"* ]]
+  [[ "$output" == *"node x.js"* ]]
+  [[ "$output" == *"DEPENDENCIES"* ]]
+  [[ "$output" == *"left-pad"* ]]
+  [[ "$output" == *"typescript"* ]]
+  [[ "$output" == *"fsevents"* ]]
+  # must NOT surface script names or version strings as if they were packages
+  [[ "$output" != *"DEPENDENCIES ==="*"postinstall"* ]]
+  [[ "$output" != *"1.0.0"* ]]
+}
+
+@test "manifest fallback (no jq): extracts deps from multi-line JSON" {
+  repo="$BATS_TEST_TMPDIR/multiline"; mkdir -p "$repo"
+  cat > "$repo/package.json" <<'JSON'
+{
+  "name": "x",
+  "scripts": {
+    "postinstall": "node x.js"
+  },
+  "dependencies": {
+    "left-pad": "1.0.0"
+  },
+  "devDependencies": {
+    "typescript": "5.0.0"
+  },
+  "optionalDependencies": {
+    "fsevents": "2.0.0"
+  }
+}
+JSON
+  run env DEFECT_SCAN_NO_JQ=1 "$DETECT" manifest "$repo"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"LIFECYCLE"* ]]
+  [[ "$output" == *"postinstall"* ]]
+  [[ "$output" == *"DEPENDENCIES"* ]]
+  [[ "$output" == *"left-pad"* ]]
+  [[ "$output" == *"typescript"* ]]
+  [[ "$output" == *"fsevents"* ]]
+}

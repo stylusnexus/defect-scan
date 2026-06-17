@@ -696,6 +696,7 @@ cmd_manifest() {
   pj="$repo/package.json"
   [ -f "$pj" ] || return 0                      # not an npm repo → clean no-op
   jqbin="$(command -v jq 2>/dev/null || true)"
+  [ -n "${DEFECT_SCAN_NO_JQ:-}" ] && jqbin=""   # test/CI hook: force the awk fallback
 
   echo "=== LIFECYCLE ==="
   if [ -n "$jqbin" ]; then
@@ -703,7 +704,11 @@ cmd_manifest() {
       | select(.key|test("^(pre|post)?install$|^prepare$|^prepublishOnly$"))
       | "\(.key): \(.value)"' "$pj" 2>/dev/null || echo "(manifest: package.json unparseable — INCONCLUSIVE)"
   else
+    # Print "<name>: <command>" with quotes stripped, mirroring the jq path. The
+    # grep isolates each whole "key": "value" lifecycle pair (compact or multi-line
+    # JSON keeps a pair on one physical line), then sed peels the quoting.
     grep -oE '"(pre|post)?install"[[:space:]]*:[[:space:]]*"[^"]*"|"prepare"[[:space:]]*:[[:space:]]*"[^"]*"|"prepublishOnly"[[:space:]]*:[[:space:]]*"[^"]*"' "$pj" \
+      | sed -E 's/^"([^"]*)"[[:space:]]*:[[:space:]]*"(.*)"$/\1: \2/' \
       || echo "(manifest: no jq and no lifecycle scripts matched — INCONCLUSIVE if scripts present)"
   fi
 
@@ -712,7 +717,7 @@ cmd_manifest() {
     "$jqbin" -r '[(.dependencies//{}),(.devDependencies//{}),(.optionalDependencies//{})]
       | add // {} | keys[]' "$pj" 2>/dev/null
   else
-    awk '/"(dev|optional)?[Dd]ependencies"[[:space:]]*:/{f=1;next} f&&/}/{f=0} f&&/"/{gsub(/[",:].*/,"");gsub(/^[[:space:]]+/,"");if($0)print}' "$pj"
+    _manifest_dep_names_awk "$pj"
   fi
 
   for lf in package-lock.json npm-shrinkwrap.json yarn.lock pnpm-lock.yaml; do
@@ -728,6 +733,56 @@ cmd_manifest() {
 
   _manifest_resolve_scripts "$repo" "$pj" "$jqbin"
   return 0
+}
+
+# _manifest_dep_names_awk <package.json>: no-jq fallback that prints every
+# dependency name across dependencies/devDependencies/optionalDependencies, for BOTH
+# compact (single-line) and multi-line layouts. JSON is not line-oriented, so it
+# slurps the whole file into one buffer and does a brace-depth-aware scan: for each
+# of the three keys it finds the matching `{`, walks to the depth-0 close, and emits
+# the quoted object keys at depth 1 (those immediately followed by `:`). This avoids
+# pulling in script names (different object) or version-string values (they are not
+# followed by `:` at depth 1). POSIX awk; BSD+GNU safe (no gensub, no length-of-array
+# reliance, no getline tricks).
+_manifest_dep_names_awk() {
+  awk '
+    { buf = buf $0 "\n" }      # slurp: JSON spans lines; brace matching needs the whole doc
+    END {
+      n = split("dependencies devDependencies optionalDependencies", keys, " ")
+      for (k = 1; k <= n; k++) emit(buf, keys[k])
+    }
+    function emit(s, key,   m, i, c, depth, started, instr, esc, name, collecting, ch) {
+      # locate the "<key>" token, then its opening brace
+      m = index(s, "\"" key "\"")
+      if (m == 0) return
+      i = m + length(key) + 2          # just past the closing quote of the key
+      # skip to the first { (the value object)
+      while (i <= length(s) && substr(s, i, 1) != "{") i++
+      if (i > length(s)) return
+      depth = 0; instr = 0; esc = 0; name = ""; collecting = 0
+      for (; i <= length(s); i++) {
+        ch = substr(s, i, 1)
+        if (instr) {
+          if (esc) { esc = 0; if (collecting) name = name ch; continue }
+          if (ch == "\\") { esc = 1; if (collecting) name = name ch; continue }
+          if (ch == "\"") { instr = 0; continue }
+          if (collecting) name = name ch
+          continue
+        }
+        if (ch == "\"") {
+          # start of a string. At depth 1 it may be an object key (name) — capture it
+          # provisionally; we only print it if a ":" follows at depth 1.
+          instr = 1
+          if (depth == 1) { collecting = 1; name = "" } else collecting = 0
+          continue
+        }
+        if (ch == "{") { depth++; continue }
+        if (ch == "}") { depth--; if (depth == 0) return; continue }
+        if (ch == ":" && depth == 1 && name != "") { print name; name = ""; collecting = 0; continue }
+        if (ch == "," && depth == 1) { name = ""; collecting = 0 }
+      }
+    }
+  ' "$1"
 }
 
 _manifest_resolve_scripts() { : ; }   # bounded resolver implemented in Task 2.3
