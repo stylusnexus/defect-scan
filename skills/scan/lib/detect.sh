@@ -876,8 +876,14 @@ _manifest_resolve_scripts() {
     echo "=== SCRIPT: $rel ==="
     head -n "$_MANIFEST_SCRIPT_MAXLINES" "$f"
     _n="$(wc -l < "$f" 2>/dev/null | tr -d ' ')"
-    [ "${_n:-0}" -gt "$_MANIFEST_SCRIPT_MAXLINES" ] && echo "(manifest: SCRIPT truncated at $_MANIFEST_SCRIPT_MAXLINES lines)"
+    if [ "${_n:-0}" -gt "$_MANIFEST_SCRIPT_MAXLINES" ]; then
+      echo "(manifest: SCRIPT truncated at $_MANIFEST_SCRIPT_MAXLINES lines)"
+    fi
   done
+  # The piped `while read` exits non-zero (read hits EOF / a final false test), which
+  # under the caller's `set -e` would abort cmd_manifest before its `return 0`. Force 0:
+  # a successful read-only slice must never report failure.
+  return 0
 }
 
 main() {

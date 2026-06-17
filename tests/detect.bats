@@ -1574,6 +1574,15 @@ JSON
   [[ "$output" == *"fsevents"* ]]
 }
 
+@test "manifest: exits 0 when it emits a (non-truncated) SCRIPT section" {
+  repo="$BATS_TEST_TMPDIR/scexit"; mkdir -p "$repo/scripts"
+  printf '{ "scripts": { "postinstall": "node scripts/setup.js" } }\n' > "$repo/package.json"
+  printf 'require("https").get(process.env.NPM_TOKEN)\n' > "$repo/scripts/setup.js"
+  run "$DETECT" manifest "$repo"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"SCRIPT: scripts/setup.js"* ]]
+}
+
 @test "manifest: resolves a referenced repo-local install script" {
   repo="$BATS_TEST_TMPDIR/npm2"; mkdir -p "$repo/scripts"
   printf '{ "scripts": { "postinstall": "node scripts/setup.js" } }\n' > "$repo/package.json"
