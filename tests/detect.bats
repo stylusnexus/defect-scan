@@ -1431,3 +1431,31 @@ EOF
   legend="$(awk '/^## [0-9]+\./ { n=$2; sub(/\./,"",n); t=$0; sub(/^## [0-9]+\. /,"",t); sub(/  .*/,"",t); printf "cat#%s=%s;", n, t }' "$f")"
   [[ "$legend" == *"cat#6=Supply-chain"* ]]
 }
+
+@test "detect.sh usage lists the manifest subcommand" {
+  run "$DETECT" bogus
+  [[ "$output" == *"manifest"* ]]
+}
+
+@test "manifest: surfaces lifecycle scripts and dependency names" {
+  repo="$BATS_TEST_TMPDIR/npm1"; mkdir -p "$repo"
+  cat > "$repo/package.json" <<'JSON'
+{ "name": "x", "scripts": { "postinstall": "node scripts/setup.js" },
+  "dependencies": { "left-pad": "1.0.0" }, "devDependencies": { "typescript": "5.0.0" } }
+JSON
+  run "$DETECT" manifest "$repo"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"LIFECYCLE"* ]]
+  [[ "$output" == *"postinstall"* ]]
+  [[ "$output" == *"node scripts/setup.js"* ]]
+  [[ "$output" == *"DEPENDENCIES"* ]]
+  [[ "$output" == *"left-pad"* ]]
+  [[ "$output" == *"typescript"* ]]
+}
+
+@test "manifest: no package.json is a clean no-op (exit 0, no output)" {
+  repo="$BATS_TEST_TMPDIR/empty"; mkdir -p "$repo"
+  run "$DETECT" manifest "$repo"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}

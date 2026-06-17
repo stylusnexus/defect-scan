@@ -688,6 +688,50 @@ cmd_preflight() {
   echo "defect-scan preflight: OK — core tools present"
 }
 
+# manifest <repo>: deterministic, READ-ONLY supply-chain surface for the reasoning pass.
+# Emits sliced sections (LIFECYCLE / DEPENDENCIES / LOCKFILE / NPMRC / SCRIPT:<path>) when
+# an npm ecosystem is present. Never executes anything. jq-preferred; awk fallback.
+cmd_manifest() {
+  repo="${1:-$PWD}"
+  pj="$repo/package.json"
+  [ -f "$pj" ] || return 0                      # not an npm repo → clean no-op
+  jqbin="$(command -v jq 2>/dev/null || true)"
+
+  echo "=== LIFECYCLE ==="
+  if [ -n "$jqbin" ]; then
+    "$jqbin" -r '.scripts // {} | to_entries[]
+      | select(.key|test("^(pre|post)?install$|^prepare$|^prepublishOnly$"))
+      | "\(.key): \(.value)"' "$pj" 2>/dev/null || echo "(manifest: package.json unparseable — INCONCLUSIVE)"
+  else
+    grep -oE '"(pre|post)?install"[[:space:]]*:[[:space:]]*"[^"]*"|"prepare"[[:space:]]*:[[:space:]]*"[^"]*"|"prepublishOnly"[[:space:]]*:[[:space:]]*"[^"]*"' "$pj" \
+      || echo "(manifest: no jq and no lifecycle scripts matched — INCONCLUSIVE if scripts present)"
+  fi
+
+  echo "=== DEPENDENCIES ==="
+  if [ -n "$jqbin" ]; then
+    "$jqbin" -r '[(.dependencies//{}),(.devDependencies//{}),(.optionalDependencies//{})]
+      | add // {} | keys[]' "$pj" 2>/dev/null
+  else
+    awk '/"(dev|optional)?[Dd]ependencies"[[:space:]]*:/{f=1;next} f&&/}/{f=0} f&&/"/{gsub(/[",:].*/,"");gsub(/^[[:space:]]+/,"");if($0)print}' "$pj"
+  fi
+
+  for lf in package-lock.json npm-shrinkwrap.json yarn.lock pnpm-lock.yaml; do
+    [ -f "$repo/$lf" ] || continue
+    echo "=== LOCKFILE $lf ==="
+    grep -nE '"?(resolved|integrity)"?[[:space:]]*[:=]' "$repo/$lf" | head -200
+  done
+
+  if [ -f "$repo/.npmrc" ]; then
+    echo "=== NPMRC ==="
+    grep -E '(^|@[^:]+:)registry[[:space:]]*=' "$repo/.npmrc" || true
+  fi
+
+  _manifest_resolve_scripts "$repo" "$pj" "$jqbin"
+  return 0
+}
+
+_manifest_resolve_scripts() { : ; }   # bounded resolver implemented in Task 2.3
+
 main() {
   sub="${1:-}"; [ $# -gt 0 ] && shift || true
   case "$sub" in
@@ -707,12 +751,13 @@ main() {
     labels)              cmd_labels "$@" ;;
     profiles)  cmd_profiles "$@" ;;
     patterns)  cmd_patterns "$@" ;;
+    manifest)  cmd_manifest "$@" ;;
     __fmget)   fm_get "$@" ;;
     __fmfield) fm_field "$@" ;;
     __evalblock) extract_eval_block ;;
     __evalgate)   eval_gate "$@" ;;
     __evalupdate) eval_update_baseline "$@" ;;
-    *) echo "usage: detect.sh {preflight|eval|eval-categories|eval-run|eval-gaps|codex-verify|stacks|tool|scope|triage|issues|issues-create|issues-ensure-label|labels|profiles|patterns} ..." >&2; return 2 ;;
+    *) echo "usage: detect.sh {preflight|eval|eval-categories|eval-run|eval-gaps|codex-verify|stacks|tool|scope|triage|manifest|issues|issues-create|issues-ensure-label|labels|profiles|patterns} ..." >&2; return 2 ;;
   esac
 }
 
