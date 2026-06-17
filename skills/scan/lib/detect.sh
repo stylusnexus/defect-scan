@@ -347,25 +347,48 @@ cmd_eval() {
   [ -f "$findings" ] || { echo "eval: findings file not found: $findings" >&2; return 2; }
   exp="$(mktemp 2>/dev/null || echo "/tmp/ds-eval-exp.$$")"
   act="$(mktemp 2>/dev/null || echo "/tmp/ds-eval-act.$$")"
-  # Expected set: prefix each "<line>:<cat>" with its fixture basename.
+  dcases="$(mktemp 2>/dev/null || echo "/tmp/ds-eval-dc.$$")"
+  # A *directory fixture* is a sidecar "<base>.expected" with a sibling directory
+  # "<base>/" (a mini-repo). Its keys are case-relative paths joined by '/' —
+  # "<base>/<relpath>" — so two fixtures can share a filename without colliding.
+  # A *single-file fixture* (no sibling dir) keeps today's basename keying.
+  : > "$dcases"
+  # Expected set: directory fixture -> "<base>/<relpath>:<line>:<cat>" (slash join);
+  # single-file -> "<base>:<line>:<cat>" (basename key, unchanged).
   for f in "$dir"/*.expected; do
     [ -f "$f" ] || continue
     base="$(basename "$f" .expected)"
+    if [ -d "$dir/$base" ]; then
+      printf '%s\n' "$base" >> "$dcases"
+      pre="$base/"
+    else
+      pre="$base:"
+    fi
     # `|| [ -n "$ln" ]` so a final line with no trailing newline is still processed —
     # a grader must not silently drop the last finding.
     while IFS= read -r ln || [ -n "$ln" ]; do
       [ -n "$ln" ] || continue
       case "$ln" in \#*) continue ;; esac
-      printf '%s:%s\n' "$base" "$ln"
+      printf '%s%s\n' "$pre" "$ln"
     done < "$f"
   done | sort -u > "$exp"
-  # Actual set: normalize each finding's path to its basename so it matches.
+  dcases_sorted="$(sort -u "$dcases")"
+  # Actual set: a finding whose first path component names a directory fixture keeps
+  # its FULL case-relative path as key; everything else is basenamed (unchanged).
   while IFS= read -r ln || [ -n "$ln" ]; do
     [ -n "$ln" ] || continue
     case "$ln" in \#*) continue ;; esac
     p="${ln%%:*}"; rest="${ln#*:}"
-    printf '%s:%s\n' "$(basename "$p")" "$rest"
+    case "$p" in ./*) p="${p#./}" ;; esac
+    first="${p%%/*}"
+    if [ -n "$dcases_sorted" ] && [ -n "$first" ] \
+       && printf '%s\n' "$dcases_sorted" | grep -qxF "$first"; then
+      printf '%s:%s\n' "$p" "$rest"
+    else
+      printf '%s:%s\n' "$(basename "$p")" "$rest"
+    fi
   done < "$findings" | sort -u > "$act"
+  rm -f "$dcases"
   # Match with ±N line tolerance, 1:1 within (basename, category) buckets.
   # N is a COMMITTED CONSTANT — do NOT make it a runtime/env knob (a tunable ruler
   # is a gameable ruler). Widen only via a CODEOWNERS-reviewed change here.

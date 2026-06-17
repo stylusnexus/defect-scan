@@ -171,6 +171,30 @@ _mk_grader_corpus() {  # $1=dir : one buggy fixture (line 4, cat#2) + one clean
   [[ "$output" == *"tp=2"* ]] && [[ "$output" == *"fp=0"* ]] && [[ "$output" == *"fn=0"* ]]
 }
 
+@test "eval grader: matches directory-fixture findings by case-relative path" {
+  dir="$BATS_TEST_TMPDIR/sc/seen"; mkdir -p "$dir/case1/pkg"
+  printf 'pkg/a.js:3:cat#6\n' > "$dir/case1.expected"
+  printf 'case1/pkg/a.js:3:cat#6\n' > "$BATS_TEST_TMPDIR/findings.txt"
+  run "$DETECT" eval "$dir" "$BATS_TEST_TMPDIR/findings.txt"
+  [[ "$output" == *"tp=1"* ]]; [[ "$output" == *"fp=0"* ]]; [[ "$output" == *"fn=0"* ]]
+}
+
+@test "eval grader: directory-fixture clean case flags a false positive" {
+  dir="$BATS_TEST_TMPDIR/sc2/seen"; mkdir -p "$dir/clean1/pkg"
+  : > "$dir/clean1.expected"   # empty = clean
+  printf 'clean1/pkg/a.js:9:cat#6\n' > "$BATS_TEST_TMPDIR/f2.txt"
+  run "$DETECT" eval "$dir" "$BATS_TEST_TMPDIR/f2.txt"
+  [[ "$output" == *"fp=1"* ]]
+}
+
+@test "eval grader: single-file basename matching still works (backward compat)" {
+  dir="$BATS_TEST_TMPDIR/sf/seen"; mkdir -p "$dir"
+  printf '5:cat#3\n' > "$dir/Foo.java.expected"
+  printf '/tmp/whatever/Foo.java:5:cat#3\n' > "$BATS_TEST_TMPDIR/f3.txt"
+  run "$DETECT" eval "$dir" "$BATS_TEST_TMPDIR/f3.txt"
+  [[ "$output" == *"tp=1"* ]]; [[ "$output" == *"fp=0"* ]]; [[ "$output" == *"fn=0"* ]]
+}
+
 @test "usage lists the eval subcommand" {
   run "$DETECT" bogus
   [[ "$output" == *"eval"* ]]
