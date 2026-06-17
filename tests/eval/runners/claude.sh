@@ -1,9 +1,12 @@
 #!/usr/bin/env sh
 # Eval runner (Claude Code, headless, READ-ONLY). Scans ONE source fixture and prints
 # output containing the eval-mode <<<EVAL>>> block. Read-only tool policy: no file
-# writes, no shell mutation. Usage: claude.sh <fixture-path> <lang>
+# writes, no shell mutation. Usage: claude.sh <fixture-path> <lang> [<scan-profile>]
+# arg3 (scan_profile) overrides the scan's --lang profile (e.g. eval-run --as) while the
+# LABEL set still comes from <lang> (the corpus name); defaults to <lang>.
 set -eu
 fixture="${1:?claude.sh: need fixture path}"; lang="${2:?claude.sh: need lang}"
+scan_profile="${3:-$lang}"
 cc="${DEFECT_SCAN_CLAUDE:-claude}"
 # Resolve the engine + this language's valid label set BEFORE cd-ing into the temp dir.
 # Telling the model the exact label vocabulary stops it inventing synonyms (panic vs
@@ -22,17 +25,29 @@ fi
 # repo so the run is self-contained. See issue #68.
 legend="$(awk '/^## [0-9]+\./ { n=$2; sub(/\./,"",n); t=$0; sub(/^## [0-9]+\. /,"",t); sub(/  .*/,"",t); printf "cat#%s = %s; ", n, t }' "$(dirname "$detect")/../baseline-categories.md" 2>/dev/null)"
 work="$(mktemp -d)"; trap 'rm -rf "$work"' EXIT
-cp "$fixture" "$work/"                        # SOURCE only — never the .expected sidecar
+# A DIRECTORY fixture is a mini-repo: copy its contents and scan the whole dir, asking
+# for paths relative to it. A FILE fixture: copy the one file and scan its basename.
+if [ -d "$fixture" ]; then
+  cp -R "$fixture"/. "$work/"                  # contents only — the .expected sidecar is a sibling, not inside
+  scan_target="."
+  reason_instr="reason directly about the files in your current directory."
+  path_instr="path = the file's path relative to this directory (e.g. src/index.js), NOT just the basename"
+else
+  cp "$fixture" "$work/"                        # SOURCE only — never the .expected sidecar
+  scan_target="$(basename "$fixture")"
+  reason_instr="reason directly about the single file in your current directory."
+  path_instr="path = the file's basename; line = integer"
+fi
 cd "$work"
 # Read-only: deny mutating tools so a runner can never edit the repo under test.
-"$cc" -p "Run /defect-scan:scan $(basename "$fixture") --lang $lang.
+"$cc" -p "Run /defect-scan:scan $scan_target --lang $scan_profile.
 The category definitions are provided inline below, so do NOT read baseline-categories.md,
 eval-mode.md, or any other skill file, and skip the git/correlation/tool-resolution stages —
-reason directly about the single file in your current directory.
+$reason_instr
 Category definitions: $legend
 After the normal report, append EXACTLY ONE machine block for the grader:
 a line \"<<<EVAL\", then one line per finding as \"<path>:<line>:<category>\"
-(path = the file's basename; line = integer). $labelinstr
+($path_instr). $labelinstr
 Then a line \"EVAL>>>\". If you find nothing, emit the two sentinel lines with
 nothing between. Always emit the block; never omit it." \
   --permission-mode plan \

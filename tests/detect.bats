@@ -1416,6 +1416,21 @@ EOF
   grep -q "eval-categories" "$root/tests/eval/runners/codex.sh"
 }
 
+@test "runners accept a scan-profile 3rd arg defaulting to the corpus arg" {
+  for rn in claude codex; do
+    f="$BATS_TEST_DIRNAME/../tests/eval/runners/$rn.sh"
+    grep -Eq '\$\{3:-"?\$?lang"?\}|scan_profile=' "$f"
+  done
+}
+
+@test "runners handle a directory fixture (copy dir + relative paths)" {
+  for rn in claude codex; do
+    f="$BATS_TEST_DIRNAME/../tests/eval/runners/$rn.sh"
+    grep -Eq '\[ -d "\$fixture" \]|\[ -d "\$1" \]' "$f"   # branches on directory fixture
+    grep -q "relative" "$f"                                # instructs relative paths
+  done
+}
+
 @test "scripts/eval-run wrapper forwards to detect.sh eval-run" {
   root="$BATS_TEST_DIRNAME/.."
   [ -x "$root/scripts/eval-run" ]
