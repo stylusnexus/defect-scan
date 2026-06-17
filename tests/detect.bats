@@ -1563,3 +1563,15 @@ JSON
   run env DEFECT_SCAN_NO_PROJECT=1 "$DETECT" supply-chain-config "$repo"
   [ "$status" -eq 0 ]; [[ "$output" != *"@hidden"* ]]
 }
+
+@test "patterns: lists built-in supply-chain.md alongside recurring.md" {
+  run "$DETECT" patterns "$BATS_TEST_TMPDIR"
+  [[ "${lines[0]}" == *"recurring.md" ]]
+  [[ "$output" == *"patterns/supply-chain.md"* ]]
+}
+
+@test "supply-chain.md defines P11-P14 mapped to cat#6" {
+  f="$BATS_TEST_DIRNAME/../skills/scan/patterns/supply-chain.md"
+  for p in P11 P12 P13 P14; do grep -q "$p" "$f"; done
+  grep -qi "cat#6" "$f"
+}

@@ -317,6 +317,11 @@ cmd_profiles() {
 cmd_patterns() {
   repo="${1:-$PWD}"
   echo "$(skill_dir)/patterns/recurring.md"
+  for f in "$(skill_dir)/patterns"/*.md; do
+    [ -f "$f" ] || continue
+    case "$f" in */recurring.md) continue ;; esac   # already emitted first
+    echo "$f"
+  done
   [ -n "${DEFECT_SCAN_NO_USER:-}" ]    || for f in "$HOME/.config/defect-scan/patterns"/*.md; do [ -f "$f" ] && echo "$f"; done
   [ -n "${DEFECT_SCAN_NO_PROJECT:-}" ] || for f in "$repo/.defect-scan/patterns"/*.md; do [ -f "$f" ] && echo "$f"; done
 }
