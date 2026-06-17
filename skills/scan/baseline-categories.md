@@ -31,6 +31,17 @@ Unclosed files/sockets/connections/handles, missing `finally`/`defer`/`with`/
 Data races, unsynchronized shared mutable state, await/lock misuse, check-then-act
 races, deadlock-prone lock ordering.
 
+## 6. Supply-chain / dependency integrity  · default severity: High
+Malicious or untrustworthy dependencies and the manifest surface that admits them:
+malicious lifecycle scripts (`pre/postinstall`/`prepare`) and the local scripts they
+invoke, install-time credential/env exfiltration, typosquatted package names,
+dependency-confusion (internal-looking names resolving to the public registry), and
+lockfile tampering (resolved host ≠ registry, missing/malformed integrity). Covers both
+**A06** known-vulnerable/outdated components (found by `npm audit`/`osv-scanner`) and
+**A08** integrity failures (found by reasoning over the manifest). This is an
+integrity/provenance class (OWASP A06/A08, CWE-1357/829, SLSA, MITRE T1195) — *not* an
+injection variant: the trust boundary is violated, not an interpreter.
+
 Each finding cites the category number so the report can group by it.
 
 ## Severity → priority (global default vs. project policy)

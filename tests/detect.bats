@@ -1413,3 +1413,21 @@ EOF
   run env -u DEFECT_SCAN_EVAL_RUNNER "$root/scripts/eval-run" foo
   [ "$status" -eq 3 ]
 }
+
+@test "eval-categories includes cat#6 (supply-chain)" {
+  run "$DETECT" eval-categories python
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"cat#6"* ]]
+}
+
+@test "baseline-categories.md defines cat#6 supply-chain (High)" {
+  f="$BATS_TEST_DIRNAME/../skills/scan/baseline-categories.md"
+  grep -qi "^## 6\. Supply-chain" "$f"
+  grep -qi "default severity: High" "$f"
+}
+
+@test "runner legend picks up cat#6 from baseline-categories headers" {
+  f="$BATS_TEST_DIRNAME/../skills/scan/baseline-categories.md"
+  legend="$(awk '/^## [0-9]+\./ { n=$2; sub(/\./,"",n); t=$0; sub(/^## [0-9]+\. /,"",t); sub(/  .*/,"",t); printf "cat#%s=%s;", n, t }' "$f")"
+  [[ "$legend" == *"cat#6=Supply-chain"* ]]
+}

@@ -411,7 +411,7 @@ cmd_eval_categories() {
   root="$(eval_corpus_root)"
   [ -d "$root/$lang" ] || { echo "eval-categories: no corpus for '$lang' under $root" >&2; return 2; }
   {
-    printf 'cat#1\ncat#2\ncat#3\ncat#4\ncat#5\n'
+    printf 'cat#1\ncat#2\ncat#3\ncat#4\ncat#5\ncat#6\n'
     # labels are the part after "<line>:" in each non-empty, non-comment .expected line
     find "$root/$lang" -name '*.expected' -type f 2>/dev/null | while IFS= read -r f; do
       while IFS= read -r ln || [ -n "$ln" ]; do
