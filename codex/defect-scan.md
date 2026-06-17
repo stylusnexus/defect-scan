@@ -30,19 +30,32 @@ shell directly, capture JSON with `jq`, read files with your own tools.
 
 1. **Detect** — `"$DETECT" scope <target|--full> "$PWD"` and `"$DETECT" stacks "$PWD"`;
    load each matched profile via `"$DETECT" profiles "$PWD"`.
+   **Supply-chain manifest hook (npm repos):** if `stacks` signals an npm ecosystem
+   (a `package.json` is present), also run `detect.sh manifest "$PWD"` (i.e.
+   `"$DETECT" manifest "$PWD"`) and retain the emitted `LIFECYCLE`, `DEPENDENCIES`,
+   `LOCKFILE`, `NPMRC`, and `SCRIPT` sections for the reasoning pass. The helper is
+   read-only — never execute manifest or script content (pattern P4).
 2. **Triage** — pipe the scoped files through `"$DETECT" triage "$PWD"`; deep-reason
    the top `--depth N` (default 20); the rest are tool-scanned only. Report coverage.
 3. **Tool pass** — resolve each profile's tools with `"$DETECT" tool <name> "$PWD"`;
    run if resolved, else record missing-with-hint. Read exit codes (a tool *error* is
    inconclusive, not "clean"). **Origin-gate:** built-in profiles auto-run; for
    user/project profiles, CONFIRM with the user before running their tools.
+   Known-vulnerable dependency findings from `npm audit` / `osv-scanner` are **cat#6**
+   (OWASP A06) — tag them accordingly.
 4. **Reasoning pass** — read the in-scope files against each profile's checklist +
-   `baseline-categories.md` + the pattern packs; run the **adversarial verification**
-   step before ranking every reasoning-only finding.
-5. **Report (→ correlate → file → fix)** — emit per `report-format.md`. Correlation
-   (Stage 4a), `--file-issues` (Stage 4b), and `--fix`/`--fix-all` behave **exactly**
-   as documented in `SKILL.md` — including the mandatory dedup gate, `gh` auth
-   requirement, label/priority proposal, batch confirmation, and the dirty-tree
+   `baseline-categories.md` + the pattern packs (including `patterns/supply-chain.md`
+   P11–P14 for supply-chain / `cat#6` findings); run the **adversarial verification**
+   step before ranking every reasoning-only finding. For npm repos, reason over the
+   manifest sections using P11–P14. Before flagging dependency-confusion (P12), read
+   `"$DETECT" supply-chain-config "$PWD"` and suppress findings for scopes declared in
+   `internal_scope` that correctly resolve to the `internal_registry`.
+5. **Report (→ correlate → file → fix)** — emit per `report-format.md`. `cat#6`
+   (supply-chain / dependency integrity) is a valid report category — group both
+   pattern-based supply-chain findings and tool-confirmed known-vuln findings under it.
+   Correlation (Stage 4a), `--file-issues` (Stage 4b), and `--fix`/`--fix-all` behave
+   **exactly** as documented in `SKILL.md` — including the mandatory dedup gate, `gh`
+   auth requirement, label/priority proposal, batch confirmation, and the dirty-tree
    refusal for fixes. Do not relax any of these invariants in the Codex port.
 
 ## 2. Arguments & flags

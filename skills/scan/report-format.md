@@ -42,6 +42,14 @@ NEW when you couldn't check the tracker.
 `--file-issues`). Sorted High→Low, then by severity. Low tier goes under a
 `<details>`-style "Low-confidence appendix" heading.
 
+**Category grouping.** Findings are grouped by category number in the final report
+block: `cat#1` (null/undefined) · `cat#2` (silent failures) · `cat#3` (injection) ·
+`cat#4` (resource leaks) · `cat#5` (concurrency) · `cat#6` (supply-chain / dependency
+integrity). `cat#6` covers both pattern-based supply-chain findings (P11–P14 from
+`patterns/supply-chain.md`) and tool-confirmed known-vulnerable dependency findings from
+`npm audit` / `osv-scanner` (OWASP A06). All are tagged `cat#6` so they surface together
+under the supply-chain group.
+
 When `--cross-model` ran, a finding may also carry **cross-model ✓** (a second model
 confirmed it) or **cross-model ✗** (the second model refuted it → downgraded). The
 header notes that cross-model verification ran and against which model.

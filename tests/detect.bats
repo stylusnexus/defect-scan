@@ -1643,3 +1643,19 @@ JSON
   for p in P11 P12 P13 P14; do grep -q "$p" "$f"; done
   grep -qi "cat#6" "$f"
 }
+
+@test "SKILL.md wires the manifest hook and cat#6" {
+  f="$BATS_TEST_DIRNAME/../skills/scan/SKILL.md"
+  grep -q "detect.sh manifest" "$f"
+  grep -qi "cat#6\|supply-chain" "$f"
+}
+
+@test "report-format documents cat#6" {
+  grep -qi "cat#6\|supply-chain" "$BATS_TEST_DIRNAME/../skills/scan/report-format.md"
+}
+
+@test "Codex driver mirrors the manifest hook + cat#6" {
+  f="$BATS_TEST_DIRNAME/../codex/defect-scan.md"
+  grep -q "detect.sh manifest" "$f"
+  grep -qi "cat#6\|supply-chain" "$f"
+}
