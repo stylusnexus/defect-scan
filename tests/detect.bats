@@ -365,6 +365,35 @@ _mk_baseline() {  # $1=path $2=pfloor $3=rfloor $4=pbase $5=rbase $6=noise
   grep -q "precision_baseline=1.00" "$c/foo/baseline.seen.txt"
 }
 
+_mk_eval_dir_corpus() {  # $1 = root, $2 = lang — one DIRECTORY fixture case1/ + sidecar
+  mkdir -p "$1/$2/seen/case1/pkg"
+  printf 'x\n' > "$1/$2/seen/case1/pkg/a.js"
+  printf 'pkg/a.js:1:cat#2\n' > "$1/$2/seen/case1.expected"   # case-relative key
+}
+
+@test "eval-run: directory fixture scores a relative-path finding as a TP (case-prefix)" {
+  c="$BATS_TEST_TMPDIR/c"; _mk_eval_dir_corpus "$c" foo
+  DEFECT_SCAN_EVAL_CORPUS="$c" \
+  DEFECT_SCAN_EVAL_RUNNER="$BATS_TEST_DIRNAME/fixtures/eval-runner-stub" \
+  DEFECT_SCAN_STUB_MODE=dirok DEFECT_SCAN_STUB_FINDING="pkg/a.js:1:cat#2" \
+    run "$DETECT" eval-run foo --as react-typescript --runs 1
+  [ "$status" -eq 0 ]
+  # the case-prefix made the grader match: recall reflects a hit, not a miss
+  [[ "$output" == *"mean_precision=1.00"* ]]
+  [[ "$output" == *"mean_recall=1.00"* ]]
+}
+
+@test "eval-run --as forwards the scan profile to the runner as arg 3" {
+  c="$BATS_TEST_TMPDIR/c"; _mk_eval_corpus "$c" foo
+  arglog="$BATS_TEST_TMPDIR/arg3.log"
+  DEFECT_SCAN_EVAL_CORPUS="$c" \
+  DEFECT_SCAN_EVAL_RUNNER="$BATS_TEST_DIRNAME/fixtures/eval-runner-stub" \
+  DEFECT_SCAN_STUB_MODE=perfect DEFECT_SCAN_STUB_ARG3LOG="$arglog" \
+    run "$DETECT" eval-run foo --as react-typescript --runs 1
+  [ "$status" -eq 0 ]
+  grep -qx "react-typescript" "$arglog"
+}
+
 @test "eval-run --split all FLAGs overfitting when seen >> held-out" {
   c="$BATS_TEST_TMPDIR/c"
   mkdir -p "$c/foo/seen" "$c/foo/held-out"

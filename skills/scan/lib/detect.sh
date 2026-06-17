@@ -516,11 +516,12 @@ eval_update_baseline() {
 # file, and scores the whole split ONCE with cmd_eval. Aggregates mean/stddev and the
 # clean-fixture FP rate, writes the .last-run artifact, then gates (Phase 4).
 cmd_eval_run() {
-  lang=""; runs=5; split="seen"; update=0
+  lang=""; runs=5; split="seen"; update=0; as_profile=""
   while [ $# -gt 0 ]; do
     case "$1" in
       --runs) runs="${2:?}"; shift 2 ;;
       --split) split="${2:?}"; shift 2 ;;
+      --as) as_profile="${2:?}"; shift 2 ;;
       --update-baseline) update=1; shift ;;
       -*) echo "eval-run: unknown flag $1" >&2; return 2 ;;
       *) [ -z "$lang" ] && lang="$1" || { echo "eval-run: unexpected arg $1" >&2; return 2; }; shift ;;
@@ -546,10 +547,22 @@ cmd_eval_run() {
       findings="$(mktemp 2>/dev/null || echo "/tmp/ds-er-$$.$r")"
       for src in "$dir"/*; do
         case "$src" in *.expected) continue ;; esac
-        [ -f "$src" ] || continue
-        out="$("$runner" "$src" "$lang" 2>/dev/null)" || { partial=1; continue; }
+        [ -f "$src" ] || [ -d "$src" ] || continue
+        # Scan profile (arg 3) = --as override, else the corpus lang. Labels still come
+        # from $lang (in the runner); only the scan's --lang profile is overridable.
+        out="$("$runner" "$src" "$lang" "${as_profile:-$lang}" 2>/dev/null)" || { partial=1; continue; }
         block="$(printf '%s' "$out" | extract_eval_block)" || { partial=1; continue; }
-        [ -n "$block" ] && printf '%s\n' "$block" >> "$findings"
+        [ -n "$block" ] || continue
+        if [ -d "$src" ]; then
+          # Directory fixture: the runner emits paths relative to the case root; the
+          # grader keys these as "<case>/<relpath>:<line>:<cat>". Prepend the case name
+          # to the PATH (part before the first ':') of each non-empty finding line.
+          casename="$(basename "$src")"
+          printf '%s\n' "$block" \
+            | awk -v c="$casename" 'NF{print c"/"$0}' >> "$findings"
+        else
+          printf '%s\n' "$block" >> "$findings"
+        fi
       done
       m="$(cmd_eval "$dir" "$findings")"
       p="$(printf '%s\n' "$m" | sed -n 's/.*precision=\([0-9.]*\).*/\1/p')"
