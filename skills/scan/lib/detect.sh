@@ -688,6 +688,32 @@ cmd_preflight() {
   echo "defect-scan preflight: OK — core tools present"
 }
 
+# supply-chain-config <repo>: emit the resolved internal-scope/registry allowlist,
+# user-layer then project-layer (project wins by appearing later; consumers dedup).
+# Unknown keys warned to stderr and skipped. Read-only. Absent/malformed never abort.
+cmd_supply_chain_config() {
+  repo="${1:-$PWD}"
+  for cf in "$HOME/.config/defect-scan/supply-chain.conf" "$repo/.defect-scan/supply-chain.conf"; do
+    case "$cf" in
+      "$HOME/.config/"*)
+        if [ -n "${DEFECT_SCAN_NO_USER:-}" ]; then continue; fi ;;
+    esac
+    case "$cf" in
+      "$repo/.defect-scan/"*)
+        if [ -n "${DEFECT_SCAN_NO_PROJECT:-}" ]; then continue; fi ;;
+    esac
+    [ -f "$cf" ] || continue
+    while IFS= read -r ln || [ -n "$ln" ]; do
+      case "$ln" in ''|\#*) continue ;; esac
+      case "$ln" in
+        internal_scope=*|internal_registry=*) printf '%s\n' "$ln" ;;
+        *) printf 'supply-chain-config: ignoring unknown directive: %s\n' "$ln" >&2 ;;
+      esac
+    done < "$cf"
+  done
+  return 0
+}
+
 # manifest <repo>: deterministic, READ-ONLY supply-chain surface for the reasoning pass.
 # Emits sliced sections (LIFECYCLE / DEPENDENCIES / LOCKFILE / NPMRC / SCRIPT:<path>) when
 # an npm ecosystem is present. Never executes anything. jq-preferred; awk fallback.
@@ -833,12 +859,13 @@ main() {
     profiles)  cmd_profiles "$@" ;;
     patterns)  cmd_patterns "$@" ;;
     manifest)  cmd_manifest "$@" ;;
+    supply-chain-config) cmd_supply_chain_config "$@" ;;
     __fmget)   fm_get "$@" ;;
     __fmfield) fm_field "$@" ;;
     __evalblock) extract_eval_block ;;
     __evalgate)   eval_gate "$@" ;;
     __evalupdate) eval_update_baseline "$@" ;;
-    *) echo "usage: detect.sh {preflight|eval|eval-categories|eval-run|eval-gaps|codex-verify|stacks|tool|scope|triage|manifest|issues|issues-create|issues-ensure-label|labels|profiles|patterns} ..." >&2; return 2 ;;
+    *) echo "usage: detect.sh {preflight|eval|eval-categories|eval-run|eval-gaps|codex-verify|stacks|tool|scope|triage|manifest|supply-chain-config|issues|issues-create|issues-ensure-label|labels|profiles|patterns} ..." >&2; return 2 ;;
   esac
 }
 

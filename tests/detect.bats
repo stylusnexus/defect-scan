@@ -1532,3 +1532,34 @@ JSON
   [[ "$output" == *"SCRIPT: scripts/big.js"* ]]
   [[ "$output" == *"truncated"* ]]
 }
+
+@test "supply-chain-config: reads project-layer internal scopes" {
+  repo="$BATS_TEST_TMPDIR/cfg"; mkdir -p "$repo/.defect-scan"
+  printf '# ours\ninternal_scope=@acme\ninternal_registry=https://npm.acme.internal\n' > "$repo/.defect-scan/supply-chain.conf"
+  run "$DETECT" supply-chain-config "$repo"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"internal_scope=@acme"* ]]
+  [[ "$output" == *"internal_registry=https://npm.acme.internal"* ]]
+}
+
+@test "supply-chain-config: absent files are a clean no-op" {
+  repo="$BATS_TEST_TMPDIR/nocfg"; mkdir -p "$repo"
+  run "$DETECT" supply-chain-config "$repo"
+  [ "$status" -eq 0 ]; [ -z "$output" ]
+}
+
+@test "supply-chain-config: unknown directive warns on stderr, valid lines still emitted" {
+  repo="$BATS_TEST_TMPDIR/cfg2"; mkdir -p "$repo/.defect-scan"
+  printf 'internal_scope=@ok\nbogus_key=whatever\n' > "$repo/.defect-scan/supply-chain.conf"
+  run sh -c '"$0" supply-chain-config "$1" 2>/dev/null' "$DETECT" "$repo"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"internal_scope=@ok"* ]]
+  [[ "$output" != *"bogus_key"* ]]   # invalid key not in stdout (it goes to stderr)
+}
+
+@test "supply-chain-config: DEFECT_SCAN_NO_PROJECT hides the project layer" {
+  repo="$BATS_TEST_TMPDIR/cfg3"; mkdir -p "$repo/.defect-scan"
+  printf 'internal_scope=@hidden\n' > "$repo/.defect-scan/supply-chain.conf"
+  run env DEFECT_SCAN_NO_PROJECT=1 "$DETECT" supply-chain-config "$repo"
+  [ "$status" -eq 0 ]; [[ "$output" != *"@hidden"* ]]
+}
