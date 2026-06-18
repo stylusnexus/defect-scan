@@ -10,6 +10,14 @@ commit messages instead (`feat:`, `fix:`, `perf:`, `docs:` … show up; `chore:`
 are hidden by default). The release commit and this file are back-merged `main → dev`
 by the deploy flow so history stays aligned.
 
+## [1.9.0](https://github.com/stylusnexus/defect-scan/compare/v1.8.1...v1.9.0) (2026-06-18)
+
+
+### Features
+
+* **scan:** supply-chain defect pattern pack (npm-first) — cat[#6](https://github.com/stylusnexus/defect-scan/issues/6), manifest hook, multi-file eval ([2932eb5](https://github.com/stylusnexus/defect-scan/commit/2932eb53a42e87415a366c08045939fc15319211))
+* **scan:** supply-chain defect pattern pack (npm-first) — cat[#6](https://github.com/stylusnexus/defect-scan/issues/6), manifest hook, multi-file eval ([#66](https://github.com/stylusnexus/defect-scan/issues/66)) ([#79](https://github.com/stylusnexus/defect-scan/issues/79)) ([4f233d1](https://github.com/stylusnexus/defect-scan/commit/4f233d11058822eb081b115e9b3f87e5d79768a2))
+
 ## [1.8.1](https://github.com/stylusnexus/defect-scan/compare/v1.8.0...v1.8.1) (2026-06-17)
 
 
