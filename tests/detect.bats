@@ -187,6 +187,18 @@ _mk_grader_corpus() {  # $1=dir : one buggy fixture (line 4, cat#2) + one clean
   [[ "$output" == *"fp=1"* ]]
 }
 
+@test "eval-run: a directory finding with a leading ./ still matches (case-prefix normalizes)" {
+  c="$BATS_TEST_TMPDIR/dotc"; mkdir -p "$c/sc/seen/case1/scripts"
+  printf 'x\n' > "$c/sc/seen/case1/scripts/setup.js"
+  printf 'scripts/setup.js:1:cat#6\n' > "$c/sc/seen/case1.expected"
+  DEFECT_SCAN_EVAL_CORPUS="$c" \
+  DEFECT_SCAN_EVAL_RUNNER="$BATS_TEST_DIRNAME/fixtures/eval-runner-stub" \
+  DEFECT_SCAN_STUB_MODE=dirok DEFECT_SCAN_STUB_FINDING="./scripts/setup.js:1:cat#6" \
+    run "$DETECT" eval-run sc --as react-typescript --runs 1
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"mean_recall=1.00"* ]]
+}
+
 @test "eval grader: single-file basename matching still works (backward compat)" {
   dir="$BATS_TEST_TMPDIR/sf/seen"; mkdir -p "$dir"
   printf '5:cat#3\n' > "$dir/Foo.java.expected"
@@ -1572,6 +1584,15 @@ JSON
   [[ "$output" == *"left-pad"* ]]
   [[ "$output" == *"typescript"* ]]
   [[ "$output" == *"fsevents"* ]]
+}
+
+@test "manifest: malformed package.json degrades to exit 0 (jq and no-jq)" {
+  repo="$BATS_TEST_TMPDIR/mal"; mkdir -p "$repo"
+  printf 'BROKEN{{ not json\n' > "$repo/package.json"
+  run "$DETECT" manifest "$repo"
+  [ "$status" -eq 0 ]
+  run env DEFECT_SCAN_NO_JQ=1 "$DETECT" manifest "$repo"
+  [ "$status" -eq 0 ]
 }
 
 @test "manifest: exits 0 when it emits a (non-truncated) SCRIPT section" {

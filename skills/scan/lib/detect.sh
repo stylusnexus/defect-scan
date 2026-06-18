@@ -558,8 +558,11 @@ cmd_eval_run() {
           # grader keys these as "<case>/<relpath>:<line>:<cat>". Prepend the case name
           # to the PATH (part before the first ':') of each non-empty finding line.
           casename="$(basename "$src")"
+          # Normalize a model-emitted leading `./` (and any interior `/./`) so prefixing
+          # the case name yields a clean "<case>/<relpath>" key the grader matches — a
+          # finding `./scripts/x.js` must not become `<case>/./scripts/x.js`.
           printf '%s\n' "$block" \
-            | awk -v c="$casename" 'NF{print c"/"$0}' >> "$findings"
+            | awk -v c="$casename" 'NF{sub(/^\.\//,""); gsub(/\/\.\//,"/"); print c"/"$0}' >> "$findings"
         else
           printf '%s\n' "$block" >> "$findings"
         fi
@@ -781,8 +784,11 @@ cmd_manifest() {
 
   echo "=== DEPENDENCIES ==="
   if [ -n "$jqbin" ]; then
+    # `|| true`: a malformed package.json makes jq exit non-zero; under `set -e` that
+    # would abort the whole hook. Degrade gracefully (LIFECYCLE already printed the
+    # INCONCLUSIVE marker) — a read-only slice must never abort the scan.
     "$jqbin" -r '[(.dependencies//{}),(.devDependencies//{}),(.optionalDependencies//{})]
-      | add // {} | keys[]' "$pj" 2>/dev/null
+      | add // {} | keys[]' "$pj" 2>/dev/null || true
   else
     _manifest_dep_names_awk "$pj"
   fi
@@ -857,11 +863,14 @@ _manifest_dep_names_awk() {
 _MANIFEST_SCRIPT_MAXLINES=200
 _manifest_resolve_scripts() {
   _repo="$1"; _pj="$2"; _jq="$3"
+  # `|| true` inside each substitution: jq exits non-zero on malformed JSON, and grep
+  # exits 1 when a manifest has no quoted tokens — under `set -e` either would abort the
+  # assignment and the whole hook. A read-only slice must degrade, never abort.
   if [ -n "$_jq" ]; then
     _cmds="$("$_jq" -r '.scripts // {} | to_entries[]
-      | select(.key|test("^(pre|post)?install$|^prepare$|^prepublishOnly$")) | .value' "$_pj" 2>/dev/null)"
+      | select(.key|test("^(pre|post)?install$|^prepare$|^prepublishOnly$")) | .value' "$_pj" 2>/dev/null || true)"
   else
-    _cmds="$(grep -oE '"[^"]*"' "$_pj")"
+    _cmds="$(grep -oE '"[^"]*"' "$_pj" || true)"
   fi
   printf '%s\n' "$_cmds" | tr ' \t' '\n\n' | while IFS= read -r tok; do
     tok="${tok#\"}"; tok="${tok%\"}"          # strip surrounding quotes (fallback path emits them)
