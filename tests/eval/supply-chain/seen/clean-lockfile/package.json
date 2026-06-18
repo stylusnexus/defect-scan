@@ -1,0 +1,8 @@
+{
+  "name": "clean-lockfile",
+  "version": "1.0.0",
+  "description": "Clean fixture: normal lockfile with registry URLs and sha512 integrity",
+  "dependencies": {
+    "ms": "^2.1.3"
+  }
+}

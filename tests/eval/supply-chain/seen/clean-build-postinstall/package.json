@@ -1,0 +1,13 @@
+{
+  "name": "clean-build-postinstall",
+  "version": "1.0.0",
+  "description": "Clean fixture: postinstall is a legit compile step, not a supply-chain threat",
+  "scripts": {
+    "test": "jest",
+    "build": "tsc -p .",
+    "postinstall": "tsc -p ."
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3"
+  }
+}

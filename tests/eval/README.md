@@ -22,7 +22,8 @@ Data flow for one `eval-run <lang>`:
 ```
   corpus fixture ─▶ runner (claude.sh / codex.sh)         [the only model call]
                       │  scans it read-only; is told the
-                      │  valid label set (eval-categories)
+                      │  valid label set (eval-categories) AND
+                      │  their definitions (baseline-categories.md)
                       ▼
                  <<<EVAL                                   stdout
                  file:line:category                        (sentinel block)
@@ -79,6 +80,43 @@ Each fixture is a small source file plus a sibling `<fixture>.expected` sidecar:
   Clean fixtures are the false-positive tripwire — most regressions make the scanner
   noisier, not blinder. Include **near-miss** clean fixtures (code that looks like the
   bug but has the guard), e.g. `clean_near_miss_except.py`.
+
+### Multi-file directory fixtures
+
+Some defects only appear when the scanner sees several related files together (e.g.
+supply-chain findings that span `package.json`, a lockfile, and an install script).
+For these, a corpus case can be a **directory fixture**: instead of a single source
+file `<case>.js`, use a directory `<case>/` that acts as a mini-repo, with a sibling
+`<case>.expected` sidecar alongside it (not inside the directory).
+
+In a directory fixture's `.expected`, each line has the form
+`<relpath>:<line>:<category>` where `<relpath>` is the file path **relative to the
+`<case>/` directory** (e.g. `pkg/a.js:3:cat#6`). The grader (`detect.sh eval`) keys
+directory-fixture findings by `<case>/<relpath>` so they match correctly; the ±2 line
+tolerance and 1:1 matching rules apply identically.
+
+An empty `<case>.expected` next to a directory fixture is still a clean fixture — any
+finding on it is a false positive.
+
+The `supply-chain` corpus under `tests/eval/supply-chain/` uses this format: each
+case is a directory mini-repo, and `.expected` sidecars carry `relpath:line:cat#6`
+lines.
+
+### Running a corpus under a specific profile (`--as`)
+
+By default `eval-run <lang>` selects the profile that matches the corpus language. To
+measure a different profile against the same corpus — for example, to check the
+supply-chain pattern pack's coverage against the `supply-chain` corpus — use:
+
+```sh
+scripts/eval-run supply-chain --as generic   # scan the supply-chain corpus with the generic profile
+```
+
+The `--as <profile>` flag is passed to the runner as its **third positional argument**
+(the runner reads it as `scan_profile`, defaulting to the corpus name when absent) and
+overrides the profile the scan would otherwise auto-detect — distinct from the corpus
+name, which selects the label set. Use it to compare how different profiles score against
+the same labeled fixtures, not to make routine runs.
 
 ## Scoring
 

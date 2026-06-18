@@ -42,4 +42,10 @@ regexes = [
   # Unambiguous placeholder VALUES only — kept tight so they can't match inside a real
   # secret (dropped bare `example`/`placeholder`/`dummy`, which appear in real values).
   '''(?i)(your[-_]?(api[-_]?)?(key|token|secret)|changeme|test[-_]?key|xxxx+)''',
+  # defect-scan's own config directive NAMES, documented as `keys: `internal_scope=``
+  # in CLAUDE.md/EXTENDING. generic-api-key reads the `key: <value>` shape as a secret,
+  # but `internal_scope=` / `internal_registry=` are directive names in
+  # .defect-scan/supply-chain.conf — never secret values. Anchored so it can't match
+  # inside a real secret.
+  '''^internal_(scope|registry)=$''',
 ]

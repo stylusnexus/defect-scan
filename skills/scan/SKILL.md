@@ -51,6 +51,17 @@ Profiles are discovered across three layers (built-in, `~/.config/defect-scan`,
 each matched profile by its path. `--no-user-profiles` / `--no-project-profiles`
 set `DEFECT_SCAN_NO_USER=1` / `DEFECT_SCAN_NO_PROJECT=1` for a built-in-only scan.
 
+**Supply-chain manifest hook (npm repos only).** When `detect.sh stacks` reports a
+profile that signals an npm ecosystem (i.e. a `package.json` is present), also run:
+```
+lib/detect.sh manifest "<repo-root>"
+```
+This emits structured read-only sections — `LIFECYCLE`, `DEPENDENCIES`, `LOCKFILE`,
+`NPMRC`, and `SCRIPT` (inline content of any referenced local install scripts) — that
+feed the Stage 3 supply-chain reasoning pass. The helper never executes manifest or
+script content; it only reads and surfaces it. Running install-time content would make
+the scanner itself the attack vector (pattern P4 — do not relax this invariant).
+
 ## Stage 1b — Triage (approach a large codebase methodically)
 Rank the in-scope files so the deep passes hit the highest-risk code first:
 ```
@@ -125,9 +136,24 @@ such with the stderr reason; never let a tool error read as a passing file.
 Read the in-scope files against the profile's `## Reasoning checklist`,
 `baseline-categories.md`, and
 consult every file listed by `lib/detect.sh patterns <repo>` (built-in `patterns/recurring.md`
-P1–P10 plus any user/project pattern packs). For EVERY reasoning-only finding, run an
-**adversarial verification** pass before ranking: state the strongest case that the finding is
-NOT a real defect (guard exists elsewhere, input is trusted, path unreachable).
+P1–P10, `patterns/supply-chain.md` P11–P14, plus any user/project pattern packs). For EVERY
+reasoning-only finding, run an **adversarial verification** pass before ranking: state the
+strongest case that the finding is NOT a real defect (guard exists elsewhere, input is trusted,
+path unreachable).
+
+**Supply-chain reasoning (npm repos — `cat#6`).** When manifest sections are available
+(Stage 1 supply-chain hook), reason over the `LIFECYCLE`, `DEPENDENCIES`, `LOCKFILE`,
+`NPMRC`, and `SCRIPT` sections using `patterns/supply-chain.md` (P11–P14) as the
+reasoning checklist. Before flagging dependency-confusion candidates (P12), read the
+project's internal-scope allowlist:
+```
+lib/detect.sh supply-chain-config "<repo-root>"
+```
+Declared `internal_scope` / `internal_registry` pairs suppress false positives for
+scoped packages that legitimately resolve to a private registry. Known-vulnerable and
+outdated dependency findings produced by `npm audit` / `osv-scanner` (tool pass) are
+also **cat#6** (A06 / OWASP) — tag those tool findings `cat#6` so they group with
+other supply-chain findings in the report.
 - Survives with a clear repro path → eligible for **High**.
 - Survives but no clear repro → **Medium**.
 - Refuted → drop it (or **Low** if genuinely ambiguous).

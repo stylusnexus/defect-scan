@@ -31,7 +31,11 @@ Language-aware defect hunter. Pipeline: **detect → triage → tool pass → re
 - **Real analyzers if installed** (project-local first): `ruff`/`mypy`, `tsc`/`eslint`;
   optional deeper: `semgrep`, `gitleaks`, `bandit`, `pip-audit`, `npm audit`, `osv-scanner`.
   Install the optional set: `sh ${CLAUDE_PLUGIN_ROOT}/scripts/setup-optional-tools.sh`
-- **9 battle-tested patterns** (`patterns/recurring.md`) + per-language reasoning checklists.
+- **14 battle-tested patterns** across two built-in packs: `patterns/recurring.md` (P1–P10,
+  cross-cutting correctness/security) and `patterns/supply-chain.md` (P11–P14, npm supply-chain:
+  malicious lifecycle scripts, typosquat/dependency-confusion, lockfile tampering, install-time
+  exfil) + per-language reasoning checklists. Supply-chain findings (cat#6) complement
+  `npm audit` and `osv-scanner` with reasoning over the manifest and lifecycle surface.
 - **Confidence tiers**: High (tool-confirmed / adversarially verified) · Medium · Low.
 - **Tracker correlation**: tags findings NEW / LIKELY FILED #N / RELATED #N / VERIFY REGRESSION #N.
 - **Issue filing** (`--file-issues`, opt-in): files NEW findings, deduped against the
