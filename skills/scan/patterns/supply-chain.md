@@ -23,6 +23,10 @@ using the invariants below.
 | P13 Lockfile tampering | Medium | cat#6 |
 | P14 Install-time credential / env exfil | High | cat#6 |
 
+*Severity above is impact-if-real — a separate axis from detection **confidence**. P12 is
+Low–Medium **confidence** (see its section: the model's package-name knowledge can be wrong,
+so adversarial verification is mandatory) despite its Medium severity.*
+
 ---
 
 ## P11 — Malicious lifecycle script

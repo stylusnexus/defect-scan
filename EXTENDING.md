@@ -86,6 +86,12 @@ Supported keys:
 `detect.sh supply-chain-config <repo>` reads this file and emits the values; set
 `DEFECT_SCAN_NO_PROJECT=1` (or `--no-project-profiles`) to suppress it.
 
+> **This file lives in the scanned repo, so it is read as *data only* — never executed.**
+> Its only effect is to *suppress* a Low-confidence dependency-confusion (P12) finding on
+> the repo's own declared internal scopes; it can never introduce, escalate, or hide any
+> other finding. (Contrast a profile's `tools:`, which would run binaries and so is
+> origin-gated.)
+
 ## Tweak a built-in profile for just your repo
 You don't have to fork core to adjust a shipped profile. Create a drop-in with the
 **same `name`** and set only the field(s) you want to change — everything you omit is

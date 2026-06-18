@@ -777,9 +777,13 @@ cmd_manifest() {
     # Print "<name>: <command>" with quotes stripped, mirroring the jq path. The
     # grep isolates each whole "key": "value" lifecycle pair (compact or multi-line
     # JSON keeps a pair on one physical line), then sed peels the quoting.
-    grep -oE '"(pre|post)?install"[[:space:]]*:[[:space:]]*"[^"]*"|"prepare"[[:space:]]*:[[:space:]]*"[^"]*"|"prepublishOnly"[[:space:]]*:[[:space:]]*"[^"]*"' "$pj" \
-      | sed -E 's/^"([^"]*)"[[:space:]]*:[[:space:]]*"(.*)"$/\1: \2/' \
-      || echo "(manifest: no jq and no lifecycle scripts matched — INCONCLUSIVE if scripts present)"
+    # Test grep's own exit in the `if` (a trailing `| sed || echo` never fires — sed
+    # always exits 0, masking grep's no-match status). The `if` also suppresses `set -e`.
+    if _lc="$(grep -oE '"(pre|post)?install"[[:space:]]*:[[:space:]]*"[^"]*"|"prepare"[[:space:]]*:[[:space:]]*"[^"]*"|"prepublishOnly"[[:space:]]*:[[:space:]]*"[^"]*"' "$pj")"; then
+      printf '%s\n' "$_lc" | sed -E 's/^"([^"]*)"[[:space:]]*:[[:space:]]*"(.*)"$/\1: \2/'
+    else
+      echo "(manifest: no jq and no lifecycle scripts matched — INCONCLUSIVE if scripts present)"
+    fi
   fi
 
   echo "=== DEPENDENCIES ==="
