@@ -171,6 +171,42 @@ _mk_grader_corpus() {  # $1=dir : one buggy fixture (line 4, cat#2) + one clean
   [[ "$output" == *"tp=2"* ]] && [[ "$output" == *"fp=0"* ]] && [[ "$output" == *"fn=0"* ]]
 }
 
+@test "eval grader: matches directory-fixture findings by case-relative path" {
+  dir="$BATS_TEST_TMPDIR/sc/seen"; mkdir -p "$dir/case1/pkg"
+  printf 'pkg/a.js:3:cat#6\n' > "$dir/case1.expected"
+  printf 'case1/pkg/a.js:3:cat#6\n' > "$BATS_TEST_TMPDIR/findings.txt"
+  run "$DETECT" eval "$dir" "$BATS_TEST_TMPDIR/findings.txt"
+  [[ "$output" == *"tp=1"* ]]; [[ "$output" == *"fp=0"* ]]; [[ "$output" == *"fn=0"* ]]
+}
+
+@test "eval grader: directory-fixture clean case flags a false positive" {
+  dir="$BATS_TEST_TMPDIR/sc2/seen"; mkdir -p "$dir/clean1/pkg"
+  : > "$dir/clean1.expected"   # empty = clean
+  printf 'clean1/pkg/a.js:9:cat#6\n' > "$BATS_TEST_TMPDIR/f2.txt"
+  run "$DETECT" eval "$dir" "$BATS_TEST_TMPDIR/f2.txt"
+  [[ "$output" == *"fp=1"* ]]
+}
+
+@test "eval-run: a directory finding with a leading ./ still matches (case-prefix normalizes)" {
+  c="$BATS_TEST_TMPDIR/dotc"; mkdir -p "$c/sc/seen/case1/scripts"
+  printf 'x\n' > "$c/sc/seen/case1/scripts/setup.js"
+  printf 'scripts/setup.js:1:cat#6\n' > "$c/sc/seen/case1.expected"
+  DEFECT_SCAN_EVAL_CORPUS="$c" \
+  DEFECT_SCAN_EVAL_RUNNER="$BATS_TEST_DIRNAME/fixtures/eval-runner-stub" \
+  DEFECT_SCAN_STUB_MODE=dirok DEFECT_SCAN_STUB_FINDING="./scripts/setup.js:1:cat#6" \
+    run "$DETECT" eval-run sc --as react-typescript --runs 1
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"mean_recall=1.00"* ]]
+}
+
+@test "eval grader: single-file basename matching still works (backward compat)" {
+  dir="$BATS_TEST_TMPDIR/sf/seen"; mkdir -p "$dir"
+  printf '5:cat#3\n' > "$dir/Foo.java.expected"
+  printf '/tmp/whatever/Foo.java:5:cat#3\n' > "$BATS_TEST_TMPDIR/f3.txt"
+  run "$DETECT" eval "$dir" "$BATS_TEST_TMPDIR/f3.txt"
+  [[ "$output" == *"tp=1"* ]]; [[ "$output" == *"fp=0"* ]]; [[ "$output" == *"fn=0"* ]]
+}
+
 @test "usage lists the eval subcommand" {
   run "$DETECT" bogus
   [[ "$output" == *"eval"* ]]
@@ -339,6 +375,35 @@ _mk_baseline() {  # $1=path $2=pfloor $3=rfloor $4=pbase $5=rbase $6=noise
   [ "$status" -eq 0 ]
   [ -f "$c/foo/baseline.seen.txt" ]
   grep -q "precision_baseline=1.00" "$c/foo/baseline.seen.txt"
+}
+
+_mk_eval_dir_corpus() {  # $1 = root, $2 = lang — one DIRECTORY fixture case1/ + sidecar
+  mkdir -p "$1/$2/seen/case1/pkg"
+  printf 'x\n' > "$1/$2/seen/case1/pkg/a.js"
+  printf 'pkg/a.js:1:cat#2\n' > "$1/$2/seen/case1.expected"   # case-relative key
+}
+
+@test "eval-run: directory fixture scores a relative-path finding as a TP (case-prefix)" {
+  c="$BATS_TEST_TMPDIR/c"; _mk_eval_dir_corpus "$c" foo
+  DEFECT_SCAN_EVAL_CORPUS="$c" \
+  DEFECT_SCAN_EVAL_RUNNER="$BATS_TEST_DIRNAME/fixtures/eval-runner-stub" \
+  DEFECT_SCAN_STUB_MODE=dirok DEFECT_SCAN_STUB_FINDING="pkg/a.js:1:cat#2" \
+    run "$DETECT" eval-run foo --as react-typescript --runs 1
+  [ "$status" -eq 0 ]
+  # the case-prefix made the grader match: recall reflects a hit, not a miss
+  [[ "$output" == *"mean_precision=1.00"* ]]
+  [[ "$output" == *"mean_recall=1.00"* ]]
+}
+
+@test "eval-run --as forwards the scan profile to the runner as arg 3" {
+  c="$BATS_TEST_TMPDIR/c"; _mk_eval_corpus "$c" foo
+  arglog="$BATS_TEST_TMPDIR/arg3.log"
+  DEFECT_SCAN_EVAL_CORPUS="$c" \
+  DEFECT_SCAN_EVAL_RUNNER="$BATS_TEST_DIRNAME/fixtures/eval-runner-stub" \
+  DEFECT_SCAN_STUB_MODE=perfect DEFECT_SCAN_STUB_ARG3LOG="$arglog" \
+    run "$DETECT" eval-run foo --as react-typescript --runs 1
+  [ "$status" -eq 0 ]
+  grep -qx "react-typescript" "$arglog"
 }
 
 @test "eval-run --split all FLAGs overfitting when seen >> held-out" {
@@ -1392,6 +1457,21 @@ EOF
   grep -q "eval-categories" "$root/tests/eval/runners/codex.sh"
 }
 
+@test "runners accept a scan-profile 3rd arg defaulting to the corpus arg" {
+  for rn in claude codex; do
+    f="$BATS_TEST_DIRNAME/../tests/eval/runners/$rn.sh"
+    grep -Eq '\$\{3:-"?\$?lang"?\}|scan_profile=' "$f"
+  done
+}
+
+@test "runners handle a directory fixture (copy dir + relative paths)" {
+  for rn in claude codex; do
+    f="$BATS_TEST_DIRNAME/../tests/eval/runners/$rn.sh"
+    grep -Eq '\[ -d "\$fixture" \]|\[ -d "\$1" \]' "$f"   # branches on directory fixture
+    grep -q "relative" "$f"                                # instructs relative paths
+  done
+}
+
 @test "scripts/eval-run wrapper forwards to detect.sh eval-run" {
   root="$BATS_TEST_DIRNAME/.."
   [ -x "$root/scripts/eval-run" ]
@@ -1412,4 +1492,226 @@ EOF
   root="$BATS_TEST_DIRNAME/.."
   run env -u DEFECT_SCAN_EVAL_RUNNER "$root/scripts/eval-run" foo
   [ "$status" -eq 3 ]
+}
+
+@test "eval-categories includes cat#6 (supply-chain)" {
+  run "$DETECT" eval-categories python
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"cat#6"* ]]
+}
+
+@test "baseline-categories.md defines cat#6 supply-chain (High)" {
+  f="$BATS_TEST_DIRNAME/../skills/scan/baseline-categories.md"
+  grep -qi "^## 6\. Supply-chain" "$f"
+  grep -qi "default severity: High" "$f"
+}
+
+@test "runner legend picks up cat#6 from baseline-categories headers" {
+  f="$BATS_TEST_DIRNAME/../skills/scan/baseline-categories.md"
+  legend="$(awk '/^## [0-9]+\./ { n=$2; sub(/\./,"",n); t=$0; sub(/^## [0-9]+\. /,"",t); sub(/  .*/,"",t); printf "cat#%s=%s;", n, t }' "$f")"
+  [[ "$legend" == *"cat#6=Supply-chain"* ]]
+}
+
+@test "detect.sh usage lists the manifest subcommand" {
+  run "$DETECT" bogus
+  [[ "$output" == *"manifest"* ]]
+}
+
+@test "manifest: surfaces lifecycle scripts and dependency names" {
+  repo="$BATS_TEST_TMPDIR/npm1"; mkdir -p "$repo"
+  cat > "$repo/package.json" <<'JSON'
+{ "name": "x", "scripts": { "postinstall": "node scripts/setup.js" },
+  "dependencies": { "left-pad": "1.0.0" }, "devDependencies": { "typescript": "5.0.0" } }
+JSON
+  run "$DETECT" manifest "$repo"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"LIFECYCLE"* ]]
+  [[ "$output" == *"postinstall"* ]]
+  [[ "$output" == *"node scripts/setup.js"* ]]
+  [[ "$output" == *"DEPENDENCIES"* ]]
+  [[ "$output" == *"left-pad"* ]]
+  [[ "$output" == *"typescript"* ]]
+}
+
+@test "manifest: no package.json is a clean no-op (exit 0, no output)" {
+  repo="$BATS_TEST_TMPDIR/empty"; mkdir -p "$repo"
+  run "$DETECT" manifest "$repo"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "manifest fallback (no jq): extracts deps from compact JSON" {
+  repo="$BATS_TEST_TMPDIR/compact"; mkdir -p "$repo"
+  printf '%s\n' '{ "scripts": { "postinstall": "node x.js" }, "dependencies": { "left-pad": "1.0.0" }, "devDependencies": { "typescript": "5.0.0" }, "optionalDependencies": { "fsevents": "2.0.0" } }' > "$repo/package.json"
+  run env DEFECT_SCAN_NO_JQ=1 "$DETECT" manifest "$repo"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"LIFECYCLE"* ]]
+  [[ "$output" == *"postinstall"* ]]
+  [[ "$output" == *"node x.js"* ]]
+  [[ "$output" == *"DEPENDENCIES"* ]]
+  [[ "$output" == *"left-pad"* ]]
+  [[ "$output" == *"typescript"* ]]
+  [[ "$output" == *"fsevents"* ]]
+  # must NOT surface script names or version strings as if they were packages
+  [[ "$output" != *"DEPENDENCIES ==="*"postinstall"* ]]
+  [[ "$output" != *"1.0.0"* ]]
+}
+
+@test "manifest fallback (no jq): extracts deps from multi-line JSON" {
+  repo="$BATS_TEST_TMPDIR/multiline"; mkdir -p "$repo"
+  cat > "$repo/package.json" <<'JSON'
+{
+  "name": "x",
+  "scripts": {
+    "postinstall": "node x.js"
+  },
+  "dependencies": {
+    "left-pad": "1.0.0"
+  },
+  "devDependencies": {
+    "typescript": "5.0.0"
+  },
+  "optionalDependencies": {
+    "fsevents": "2.0.0"
+  }
+}
+JSON
+  run env DEFECT_SCAN_NO_JQ=1 "$DETECT" manifest "$repo"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"LIFECYCLE"* ]]
+  [[ "$output" == *"postinstall"* ]]
+  [[ "$output" == *"DEPENDENCIES"* ]]
+  [[ "$output" == *"left-pad"* ]]
+  [[ "$output" == *"typescript"* ]]
+  [[ "$output" == *"fsevents"* ]]
+}
+
+@test "manifest: malformed package.json degrades to exit 0 (jq and no-jq)" {
+  repo="$BATS_TEST_TMPDIR/mal"; mkdir -p "$repo"
+  printf 'BROKEN{{ not json\n' > "$repo/package.json"
+  run "$DETECT" manifest "$repo"
+  [ "$status" -eq 0 ]
+  run env DEFECT_SCAN_NO_JQ=1 "$DETECT" manifest "$repo"
+  [ "$status" -eq 0 ]
+}
+
+@test "manifest: exits 0 when it emits a (non-truncated) SCRIPT section" {
+  repo="$BATS_TEST_TMPDIR/scexit"; mkdir -p "$repo/scripts"
+  printf '{ "scripts": { "postinstall": "node scripts/setup.js" } }\n' > "$repo/package.json"
+  printf 'require("https").get(process.env.NPM_TOKEN)\n' > "$repo/scripts/setup.js"
+  run "$DETECT" manifest "$repo"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"SCRIPT: scripts/setup.js"* ]]
+}
+
+@test "manifest: resolves a referenced repo-local install script" {
+  repo="$BATS_TEST_TMPDIR/npm2"; mkdir -p "$repo/scripts"
+  printf '{ "scripts": { "postinstall": "node scripts/setup.js" } }\n' > "$repo/package.json"
+  printf 'require("https").get(process.env.NPM_TOKEN)\n' > "$repo/scripts/setup.js"
+  run "$DETECT" manifest "$repo"
+  [[ "$output" == *"SCRIPT: scripts/setup.js"* ]]
+  [[ "$output" == *"process.env.NPM_TOKEN"* ]]
+}
+
+@test "manifest: refuses unsafe script references (abs / traversal / node_modules)" {
+  repo="$BATS_TEST_TMPDIR/npm3"; mkdir -p "$repo"
+  printf '{ "scripts": { "postinstall": "node /etc/evil.js && node ../x.js && node node_modules/y.js" } }\n' > "$repo/package.json"
+  run "$DETECT" manifest "$repo"
+  [[ "$output" != *"SCRIPT: /etc/evil.js"* ]]
+  [[ "$output" != *"SCRIPT: ../x.js"* ]]
+  [[ "$output" != *"SCRIPT: node_modules"* ]]
+}
+
+@test "manifest: truncates an oversized resolved script" {
+  repo="$BATS_TEST_TMPDIR/npm4"; mkdir -p "$repo/scripts"
+  printf '{ "scripts": { "postinstall": "node scripts/big.js" } }\n' > "$repo/package.json"
+  i=0; while [ "$i" -lt 300 ]; do echo "line$i"; i=$((i+1)); done > "$repo/scripts/big.js"
+  run "$DETECT" manifest "$repo"
+  [[ "$output" == *"SCRIPT: scripts/big.js"* ]]
+  [[ "$output" == *"truncated"* ]]
+}
+
+@test "supply-chain-config: reads project-layer internal scopes" {
+  repo="$BATS_TEST_TMPDIR/cfg"; mkdir -p "$repo/.defect-scan"
+  printf '# ours\ninternal_scope=@acme\ninternal_registry=https://npm.acme.internal\n' > "$repo/.defect-scan/supply-chain.conf"
+  run "$DETECT" supply-chain-config "$repo"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"internal_scope=@acme"* ]]
+  [[ "$output" == *"internal_registry=https://npm.acme.internal"* ]]
+}
+
+@test "supply-chain-config: absent files are a clean no-op" {
+  repo="$BATS_TEST_TMPDIR/nocfg"; mkdir -p "$repo"
+  run "$DETECT" supply-chain-config "$repo"
+  [ "$status" -eq 0 ]; [ -z "$output" ]
+}
+
+@test "supply-chain-config: unknown directive warns on stderr, valid lines still emitted" {
+  repo="$BATS_TEST_TMPDIR/cfg2"; mkdir -p "$repo/.defect-scan"
+  printf 'internal_scope=@ok\nbogus_key=whatever\n' > "$repo/.defect-scan/supply-chain.conf"
+  run sh -c '"$0" supply-chain-config "$1" 2>/dev/null' "$DETECT" "$repo"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"internal_scope=@ok"* ]]
+  [[ "$output" != *"bogus_key"* ]]   # invalid key not in stdout (it goes to stderr)
+}
+
+@test "supply-chain-config: DEFECT_SCAN_NO_PROJECT hides the project layer" {
+  repo="$BATS_TEST_TMPDIR/cfg3"; mkdir -p "$repo/.defect-scan"
+  printf 'internal_scope=@hidden\n' > "$repo/.defect-scan/supply-chain.conf"
+  run env DEFECT_SCAN_NO_PROJECT=1 "$DETECT" supply-chain-config "$repo"
+  [ "$status" -eq 0 ]; [[ "$output" != *"@hidden"* ]]
+}
+
+@test "patterns: lists built-in supply-chain.md alongside recurring.md" {
+  run "$DETECT" patterns "$BATS_TEST_TMPDIR"
+  [[ "${lines[0]}" == *"recurring.md" ]]
+  [[ "$output" == *"patterns/supply-chain.md"* ]]
+}
+
+@test "supply-chain.md defines P11-P14 mapped to cat#6" {
+  f="$BATS_TEST_DIRNAME/../skills/scan/patterns/supply-chain.md"
+  for p in P11 P12 P13 P14; do grep -q "$p" "$f"; done
+  grep -qi "cat#6" "$f"
+}
+
+@test "SKILL.md wires the manifest hook and cat#6" {
+  f="$BATS_TEST_DIRNAME/../skills/scan/SKILL.md"
+  grep -q "detect.sh manifest" "$f"
+  grep -qi "cat#6\|supply-chain" "$f"
+}
+
+@test "report-format documents cat#6" {
+  grep -qi "cat#6\|supply-chain" "$BATS_TEST_DIRNAME/../skills/scan/report-format.md"
+}
+
+@test "Codex driver mirrors the manifest hook + cat#6" {
+  f="$BATS_TEST_DIRNAME/../codex/defect-scan.md"
+  grep -q "detect.sh manifest" "$f"
+  grep -qi "cat#6\|supply-chain" "$f"
+}
+
+@test "supply-chain corpus has labeled buggy + empty clean cases" {
+  d="$BATS_TEST_DIRNAME/../tests/eval/supply-chain/seen"
+  [ -d "$d" ]
+  grep -rq "cat#6" "$d"/*.expected
+  found_empty=0; for e in "$d"/*.expected; do [ -s "$e" ] || found_empty=1; done; [ "$found_empty" -eq 1 ]
+}
+
+@test "supply-chain corpus: each sidecar has a sibling directory and valid labels" {
+  d="$BATS_TEST_DIRNAME/../tests/eval/supply-chain/seen"
+  for e in "$d"/*.expected; do
+    base="$(basename "$e" .expected)"
+    [ -d "$d/$base" ]   # sibling mini-repo dir exists
+    while IFS= read -r ln || [ -n "$ln" ]; do
+      [ -n "$ln" ] || continue
+      echo "$ln" | grep -Eq '^[^:]+:[0-9]+:cat#6$'   # relpath:line:cat#6
+    done < "$e"
+  done
+}
+
+@test "docs reflect cat#6 and multi-file fixtures" {
+  root="$BATS_TEST_DIRNAME/.."
+  grep -qi "six\|cat#6\|supply-chain" "$root/README.md"
+  ! grep -q "9 battle-tested patterns" "$root/commands/help.md"
+  grep -qi "multi-file\|fixture repo\|directory fixture" "$root/tests/eval/README.md"
 }

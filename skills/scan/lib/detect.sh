@@ -317,6 +317,11 @@ cmd_profiles() {
 cmd_patterns() {
   repo="${1:-$PWD}"
   echo "$(skill_dir)/patterns/recurring.md"
+  for f in "$(skill_dir)/patterns"/*.md; do
+    [ -f "$f" ] || continue
+    case "$f" in */recurring.md) continue ;; esac   # already emitted first
+    echo "$f"
+  done
   [ -n "${DEFECT_SCAN_NO_USER:-}" ]    || for f in "$HOME/.config/defect-scan/patterns"/*.md; do [ -f "$f" ] && echo "$f"; done
   [ -n "${DEFECT_SCAN_NO_PROJECT:-}" ] || for f in "$repo/.defect-scan/patterns"/*.md; do [ -f "$f" ] && echo "$f"; done
 }
@@ -342,25 +347,48 @@ cmd_eval() {
   [ -f "$findings" ] || { echo "eval: findings file not found: $findings" >&2; return 2; }
   exp="$(mktemp 2>/dev/null || echo "/tmp/ds-eval-exp.$$")"
   act="$(mktemp 2>/dev/null || echo "/tmp/ds-eval-act.$$")"
-  # Expected set: prefix each "<line>:<cat>" with its fixture basename.
+  dcases="$(mktemp 2>/dev/null || echo "/tmp/ds-eval-dc.$$")"
+  # A *directory fixture* is a sidecar "<base>.expected" with a sibling directory
+  # "<base>/" (a mini-repo). Its keys are case-relative paths joined by '/' —
+  # "<base>/<relpath>" — so two fixtures can share a filename without colliding.
+  # A *single-file fixture* (no sibling dir) keeps today's basename keying.
+  : > "$dcases"
+  # Expected set: directory fixture -> "<base>/<relpath>:<line>:<cat>" (slash join);
+  # single-file -> "<base>:<line>:<cat>" (basename key, unchanged).
   for f in "$dir"/*.expected; do
     [ -f "$f" ] || continue
     base="$(basename "$f" .expected)"
+    if [ -d "$dir/$base" ]; then
+      printf '%s\n' "$base" >> "$dcases"
+      pre="$base/"
+    else
+      pre="$base:"
+    fi
     # `|| [ -n "$ln" ]` so a final line with no trailing newline is still processed —
     # a grader must not silently drop the last finding.
     while IFS= read -r ln || [ -n "$ln" ]; do
       [ -n "$ln" ] || continue
       case "$ln" in \#*) continue ;; esac
-      printf '%s:%s\n' "$base" "$ln"
+      printf '%s%s\n' "$pre" "$ln"
     done < "$f"
   done | sort -u > "$exp"
-  # Actual set: normalize each finding's path to its basename so it matches.
+  dcases_sorted="$(sort -u "$dcases")"
+  # Actual set: a finding whose first path component names a directory fixture keeps
+  # its FULL case-relative path as key; everything else is basenamed (unchanged).
   while IFS= read -r ln || [ -n "$ln" ]; do
     [ -n "$ln" ] || continue
     case "$ln" in \#*) continue ;; esac
     p="${ln%%:*}"; rest="${ln#*:}"
-    printf '%s:%s\n' "$(basename "$p")" "$rest"
+    case "$p" in ./*) p="${p#./}" ;; esac
+    first="${p%%/*}"
+    if [ -n "$dcases_sorted" ] && [ -n "$first" ] \
+       && printf '%s\n' "$dcases_sorted" | grep -qxF "$first"; then
+      printf '%s:%s\n' "$p" "$rest"
+    else
+      printf '%s:%s\n' "$(basename "$p")" "$rest"
+    fi
   done < "$findings" | sort -u > "$act"
+  rm -f "$dcases"
   # Match with ±N line tolerance, 1:1 within (basename, category) buckets.
   # N is a COMMITTED CONSTANT — do NOT make it a runtime/env knob (a tunable ruler
   # is a gameable ruler). Widen only via a CODEOWNERS-reviewed change here.
@@ -411,7 +439,7 @@ cmd_eval_categories() {
   root="$(eval_corpus_root)"
   [ -d "$root/$lang" ] || { echo "eval-categories: no corpus for '$lang' under $root" >&2; return 2; }
   {
-    printf 'cat#1\ncat#2\ncat#3\ncat#4\ncat#5\n'
+    printf 'cat#1\ncat#2\ncat#3\ncat#4\ncat#5\ncat#6\n'
     # labels are the part after "<line>:" in each non-empty, non-comment .expected line
     find "$root/$lang" -name '*.expected' -type f 2>/dev/null | while IFS= read -r f; do
       while IFS= read -r ln || [ -n "$ln" ]; do
@@ -488,11 +516,12 @@ eval_update_baseline() {
 # file, and scores the whole split ONCE with cmd_eval. Aggregates mean/stddev and the
 # clean-fixture FP rate, writes the .last-run artifact, then gates (Phase 4).
 cmd_eval_run() {
-  lang=""; runs=5; split="seen"; update=0
+  lang=""; runs=5; split="seen"; update=0; as_profile=""
   while [ $# -gt 0 ]; do
     case "$1" in
       --runs) runs="${2:?}"; shift 2 ;;
       --split) split="${2:?}"; shift 2 ;;
+      --as) as_profile="${2:?}"; shift 2 ;;
       --update-baseline) update=1; shift ;;
       -*) echo "eval-run: unknown flag $1" >&2; return 2 ;;
       *) [ -z "$lang" ] && lang="$1" || { echo "eval-run: unexpected arg $1" >&2; return 2; }; shift ;;
@@ -518,10 +547,25 @@ cmd_eval_run() {
       findings="$(mktemp 2>/dev/null || echo "/tmp/ds-er-$$.$r")"
       for src in "$dir"/*; do
         case "$src" in *.expected) continue ;; esac
-        [ -f "$src" ] || continue
-        out="$("$runner" "$src" "$lang" 2>/dev/null)" || { partial=1; continue; }
+        [ -f "$src" ] || [ -d "$src" ] || continue
+        # Scan profile (arg 3) = --as override, else the corpus lang. Labels still come
+        # from $lang (in the runner); only the scan's --lang profile is overridable.
+        out="$("$runner" "$src" "$lang" "${as_profile:-$lang}" 2>/dev/null)" || { partial=1; continue; }
         block="$(printf '%s' "$out" | extract_eval_block)" || { partial=1; continue; }
-        [ -n "$block" ] && printf '%s\n' "$block" >> "$findings"
+        [ -n "$block" ] || continue
+        if [ -d "$src" ]; then
+          # Directory fixture: the runner emits paths relative to the case root; the
+          # grader keys these as "<case>/<relpath>:<line>:<cat>". Prepend the case name
+          # to the PATH (part before the first ':') of each non-empty finding line.
+          casename="$(basename "$src")"
+          # Normalize a model-emitted leading `./` (and any interior `/./`) so prefixing
+          # the case name yields a clean "<case>/<relpath>" key the grader matches — a
+          # finding `./scripts/x.js` must not become `<case>/./scripts/x.js`.
+          printf '%s\n' "$block" \
+            | awk -v c="$casename" 'NF{sub(/^\.\//,""); gsub(/\/\.\//,"/"); print c"/"$0}' >> "$findings"
+        else
+          printf '%s\n' "$block" >> "$findings"
+        fi
       done
       m="$(cmd_eval "$dir" "$findings")"
       p="$(printf '%s\n' "$m" | sed -n 's/.*precision=\([0-9.]*\).*/\1/p')"
@@ -688,6 +732,173 @@ cmd_preflight() {
   echo "defect-scan preflight: OK — core tools present"
 }
 
+# supply-chain-config <repo>: emit the resolved internal-scope/registry allowlist,
+# user-layer then project-layer (project wins by appearing later; consumers dedup).
+# Unknown keys warned to stderr and skipped. Read-only. Absent/malformed never abort.
+cmd_supply_chain_config() {
+  repo="${1:-$PWD}"
+  for cf in "$HOME/.config/defect-scan/supply-chain.conf" "$repo/.defect-scan/supply-chain.conf"; do
+    case "$cf" in
+      "$HOME/.config/"*)
+        if [ -n "${DEFECT_SCAN_NO_USER:-}" ]; then continue; fi ;;
+    esac
+    case "$cf" in
+      "$repo/.defect-scan/"*)
+        if [ -n "${DEFECT_SCAN_NO_PROJECT:-}" ]; then continue; fi ;;
+    esac
+    [ -f "$cf" ] || continue
+    while IFS= read -r ln || [ -n "$ln" ]; do
+      case "$ln" in ''|\#*) continue ;; esac
+      case "$ln" in
+        internal_scope=*|internal_registry=*) printf '%s\n' "$ln" ;;
+        *) printf 'supply-chain-config: ignoring unknown directive: %s\n' "$ln" >&2 ;;
+      esac
+    done < "$cf"
+  done
+  return 0
+}
+
+# manifest <repo>: deterministic, READ-ONLY supply-chain surface for the reasoning pass.
+# Emits sliced sections (LIFECYCLE / DEPENDENCIES / LOCKFILE / NPMRC / SCRIPT:<path>) when
+# an npm ecosystem is present. Never executes anything. jq-preferred; awk fallback.
+cmd_manifest() {
+  repo="${1:-$PWD}"
+  pj="$repo/package.json"
+  [ -f "$pj" ] || return 0                      # not an npm repo → clean no-op
+  jqbin="$(command -v jq 2>/dev/null || true)"
+  [ -n "${DEFECT_SCAN_NO_JQ:-}" ] && jqbin=""   # test/CI hook: force the awk fallback
+
+  echo "=== LIFECYCLE ==="
+  if [ -n "$jqbin" ]; then
+    "$jqbin" -r '.scripts // {} | to_entries[]
+      | select(.key|test("^(pre|post)?install$|^prepare$|^prepublishOnly$"))
+      | "\(.key): \(.value)"' "$pj" 2>/dev/null || echo "(manifest: package.json unparseable — INCONCLUSIVE)"
+  else
+    # Print "<name>: <command>" with quotes stripped, mirroring the jq path. The
+    # grep isolates each whole "key": "value" lifecycle pair (compact or multi-line
+    # JSON keeps a pair on one physical line), then sed peels the quoting.
+    # Test grep's own exit in the `if` (a trailing `| sed || echo` never fires — sed
+    # always exits 0, masking grep's no-match status). The `if` also suppresses `set -e`.
+    if _lc="$(grep -oE '"(pre|post)?install"[[:space:]]*:[[:space:]]*"[^"]*"|"prepare"[[:space:]]*:[[:space:]]*"[^"]*"|"prepublishOnly"[[:space:]]*:[[:space:]]*"[^"]*"' "$pj")"; then
+      printf '%s\n' "$_lc" | sed -E 's/^"([^"]*)"[[:space:]]*:[[:space:]]*"(.*)"$/\1: \2/'
+    else
+      echo "(manifest: no jq and no lifecycle scripts matched — INCONCLUSIVE if scripts present)"
+    fi
+  fi
+
+  echo "=== DEPENDENCIES ==="
+  if [ -n "$jqbin" ]; then
+    # `|| true`: a malformed package.json makes jq exit non-zero; under `set -e` that
+    # would abort the whole hook. Degrade gracefully (LIFECYCLE already printed the
+    # INCONCLUSIVE marker) — a read-only slice must never abort the scan.
+    "$jqbin" -r '[(.dependencies//{}),(.devDependencies//{}),(.optionalDependencies//{})]
+      | add // {} | keys[]' "$pj" 2>/dev/null || true
+  else
+    _manifest_dep_names_awk "$pj"
+  fi
+
+  for lf in package-lock.json npm-shrinkwrap.json yarn.lock pnpm-lock.yaml; do
+    [ -f "$repo/$lf" ] || continue
+    echo "=== LOCKFILE $lf ==="
+    grep -nE '"?(resolved|integrity)"?[[:space:]]*[:=]' "$repo/$lf" | head -200
+  done
+
+  if [ -f "$repo/.npmrc" ]; then
+    echo "=== NPMRC ==="
+    grep -E '(^|@[^:]+:)registry[[:space:]]*=' "$repo/.npmrc" || true
+  fi
+
+  _manifest_resolve_scripts "$repo" "$pj" "$jqbin"
+  return 0
+}
+
+# _manifest_dep_names_awk <package.json>: no-jq fallback that prints every
+# dependency name across dependencies/devDependencies/optionalDependencies, for BOTH
+# compact (single-line) and multi-line layouts. JSON is not line-oriented, so it
+# slurps the whole file into one buffer and does a brace-depth-aware scan: for each
+# of the three keys it finds the matching `{`, walks to the depth-0 close, and emits
+# the quoted object keys at depth 1 (those immediately followed by `:`). This avoids
+# pulling in script names (different object) or version-string values (they are not
+# followed by `:` at depth 1). POSIX awk; BSD+GNU safe (no gensub, no length-of-array
+# reliance, no getline tricks).
+_manifest_dep_names_awk() {
+  awk '
+    { buf = buf $0 "\n" }      # slurp: JSON spans lines; brace matching needs the whole doc
+    END {
+      n = split("dependencies devDependencies optionalDependencies", keys, " ")
+      for (k = 1; k <= n; k++) emit(buf, keys[k])
+    }
+    function emit(s, key,   m, i, c, depth, started, instr, esc, name, collecting, ch) {
+      # locate the "<key>" token, then its opening brace
+      m = index(s, "\"" key "\"")
+      if (m == 0) return
+      i = m + length(key) + 2          # just past the closing quote of the key
+      # skip to the first { (the value object)
+      while (i <= length(s) && substr(s, i, 1) != "{") i++
+      if (i > length(s)) return
+      depth = 0; instr = 0; esc = 0; name = ""; collecting = 0
+      for (; i <= length(s); i++) {
+        ch = substr(s, i, 1)
+        if (instr) {
+          if (esc) { esc = 0; if (collecting) name = name ch; continue }
+          if (ch == "\\") { esc = 1; if (collecting) name = name ch; continue }
+          if (ch == "\"") { instr = 0; continue }
+          if (collecting) name = name ch
+          continue
+        }
+        if (ch == "\"") {
+          # start of a string. At depth 1 it may be an object key (name) — capture it
+          # provisionally; we only print it if a ":" follows at depth 1.
+          instr = 1
+          if (depth == 1) { collecting = 1; name = "" } else collecting = 0
+          continue
+        }
+        if (ch == "{") { depth++; continue }
+        if (ch == "}") { depth--; if (depth == 0) return; continue }
+        if (ch == ":" && depth == 1 && name != "") { print name; name = ""; collecting = 0; continue }
+        if (ch == "," && depth == 1) { name = ""; collecting = 0 }
+      }
+    }
+  ' "$1"
+}
+
+# Resolve ONE level of repo-local script references in lifecycle commands. Read-only,
+# size-capped, no recursion, no node_modules, no traversal outside the repo.
+_MANIFEST_SCRIPT_MAXLINES=200
+_manifest_resolve_scripts() {
+  _repo="$1"; _pj="$2"; _jq="$3"
+  # `|| true` inside each substitution: jq exits non-zero on malformed JSON, and grep
+  # exits 1 when a manifest has no quoted tokens — under `set -e` either would abort the
+  # assignment and the whole hook. A read-only slice must degrade, never abort.
+  if [ -n "$_jq" ]; then
+    _cmds="$("$_jq" -r '.scripts // {} | to_entries[]
+      | select(.key|test("^(pre|post)?install$|^prepare$|^prepublishOnly$")) | .value' "$_pj" 2>/dev/null || true)"
+  else
+    _cmds="$(grep -oE '"[^"]*"' "$_pj" || true)"
+  fi
+  printf '%s\n' "$_cmds" | tr ' \t' '\n\n' | while IFS= read -r tok; do
+    tok="${tok#\"}"; tok="${tok%\"}"          # strip surrounding quotes (fallback path emits them)
+    case "$tok" in
+      /*|*..*|*node_modules/*) continue ;;                 # abs / traversal / vendored → refuse
+      *.js|*.cjs|*.mjs|*.sh|./*) : ;;                       # plausible local script
+      *) continue ;;
+    esac
+    rel="${tok#./}"
+    f="$_repo/$rel"
+    [ -f "$f" ] || continue
+    echo "=== SCRIPT: $rel ==="
+    head -n "$_MANIFEST_SCRIPT_MAXLINES" "$f"
+    _n="$(wc -l < "$f" 2>/dev/null | tr -d ' ')"
+    if [ "${_n:-0}" -gt "$_MANIFEST_SCRIPT_MAXLINES" ]; then
+      echo "(manifest: SCRIPT truncated at $_MANIFEST_SCRIPT_MAXLINES lines)"
+    fi
+  done
+  # The piped `while read` exits non-zero (read hits EOF / a final false test), which
+  # under the caller's `set -e` would abort cmd_manifest before its `return 0`. Force 0:
+  # a successful read-only slice must never report failure.
+  return 0
+}
+
 main() {
   sub="${1:-}"; [ $# -gt 0 ] && shift || true
   case "$sub" in
@@ -707,12 +918,14 @@ main() {
     labels)              cmd_labels "$@" ;;
     profiles)  cmd_profiles "$@" ;;
     patterns)  cmd_patterns "$@" ;;
+    manifest)  cmd_manifest "$@" ;;
+    supply-chain-config) cmd_supply_chain_config "$@" ;;
     __fmget)   fm_get "$@" ;;
     __fmfield) fm_field "$@" ;;
     __evalblock) extract_eval_block ;;
     __evalgate)   eval_gate "$@" ;;
     __evalupdate) eval_update_baseline "$@" ;;
-    *) echo "usage: detect.sh {preflight|eval|eval-categories|eval-run|eval-gaps|codex-verify|stacks|tool|scope|triage|issues|issues-create|issues-ensure-label|labels|profiles|patterns} ..." >&2; return 2 ;;
+    *) echo "usage: detect.sh {preflight|eval|eval-categories|eval-run|eval-gaps|codex-verify|stacks|tool|scope|triage|manifest|supply-chain-config|issues|issues-create|issues-ensure-label|labels|profiles|patterns} ..." >&2; return 2 ;;
   esac
 }
 

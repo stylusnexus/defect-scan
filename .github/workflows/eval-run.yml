@@ -9,6 +9,7 @@ on:
       lang:   { description: "language profile (e.g. java)", required: true }
       runs:   { description: "runs per fixture", required: false, default: "5" }
       split:  { description: "seen | held-out | all", required: false, default: "seen" }
+      as_profile: { description: "scan profile override (--as, e.g. react-typescript); defaults to lang", required: false, default: "" }
 
 permissions:
   contents: read            # minimal token
@@ -51,5 +52,9 @@ jobs:
           DEFECT_SCAN_EVAL_RUNNER: tests/eval/runners/codex.sh
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
+          as_arg=""
+          if [ -n "${{ inputs.as_profile }}" ]; then
+            as_arg="--as ${{ inputs.as_profile }}"
+          fi
           sh skills/scan/lib/detect.sh eval-run "${{ inputs.lang }}" \
-            --runs "${{ inputs.runs }}" --split "${{ inputs.split }}"
+            --runs "${{ inputs.runs }}" --split "${{ inputs.split }}" $as_arg

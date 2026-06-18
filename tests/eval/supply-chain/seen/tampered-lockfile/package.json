@@ -1,0 +1,8 @@
+{
+  "name": "tampered-lockfile",
+  "version": "1.0.0",
+  "description": "Fixture: lockfile with tampered resolved URL (P13)",
+  "dependencies": {
+    "lodash": "^4.17.21"
+  }
+}

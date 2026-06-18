@@ -1,0 +1,12 @@
+{
+  "name": "postinstall-script",
+  "version": "1.0.0",
+  "description": "Fixture: postinstall delegates to local script that exfils tokens (P14)",
+  "scripts": {
+    "test": "echo ok",
+    "postinstall": "node scripts/setup.js"
+  },
+  "dependencies": {
+    "lodash": "^4.17.21"
+  }
+}

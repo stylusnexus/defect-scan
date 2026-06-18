@@ -1,6 +1,9 @@
 #!/usr/bin/env sh
 # Deterministic stub runner for the eval harness tests (no model).
-# Usage: eval-runner-stub <fixture-path> <lang>
+# Usage: eval-runner-stub <fixture-path> <lang> [<scan-profile>]
+# The optional 3rd arg (scan profile, e.g. --as override) is accepted and ignored
+# except that, when DEFECT_SCAN_STUB_ARG3LOG is set, it is appended to that file so a
+# test can assert the profile was forwarded.
 # Behavior is driven by DEFECT_SCAN_STUB_MODE so a test can simulate each case:
 #   ok        -> emit a correct block keyed by the fixture basename + DEFECT_SCAN_STUB_FINDING
 #   empty     -> emit a present-but-empty block (legit "no findings"; correct for clean)
@@ -11,9 +14,15 @@
 #                empty block otherwise (lets a clean, dotted-name fixture whose name
 #                is a regex variant of the buggy one — e.g. "x.UGy" vs "xBUGy" — coexist
 #                with a detected buggy fixture without itself being detected)
-# DEFECT_SCAN_STUB_FINDING = "<line>:<category>" appended after the basename (mode=ok).
+#   dirok     -> directory fixture: emit a RELATIVE-path finding (DEFECT_SCAN_STUB_FINDING
+#                already is "<relpath>:<line>:<cat>"); eval-run adds the <case>/ prefix.
+#                Empty block for a file fixture.
+# DEFECT_SCAN_STUB_FINDING = "<line>:<category>" appended after the basename (mode=ok),
+# or a full "<relpath>:<line>:<category>" line emitted verbatim (mode=dirok).
 set -eu
 fixture="${1:?stub: need fixture path}"
+scan_profile="${3:-${2:-}}"               # accept (and record) the optional scan-profile arg
+[ -n "${DEFECT_SCAN_STUB_ARG3LOG:-}" ] && printf '%s\n' "$scan_profile" >> "$DEFECT_SCAN_STUB_ARG3LOG"
 base="$(basename "$fixture")"
 mode="${DEFECT_SCAN_STUB_MODE:-ok}"
 finding="${DEFECT_SCAN_STUB_FINDING:-1:cat#2}"
@@ -36,6 +45,11 @@ case "$mode" in
       *BUG*) printf '<<<EVAL\n%s:%s\nEVAL>>>\n' "$base" "$finding" ;;
       *)     printf '<<<EVAL\nEVAL>>>\n' ;;
     esac ;;
+  dirok)
+    # Directory fixture: emit the finding's relative path verbatim (no basename prefix);
+    # eval-run prepends the <case>/ prefix. A file fixture finds nothing here.
+    if [ -d "$fixture" ]; then printf '<<<EVAL\n%s\nEVAL>>>\n' "$finding"
+    else printf '<<<EVAL\nEVAL>>>\n'; fi ;;
   missing)   : ;;                          # no block at all
   dup)       printf '<<<EVAL\n%s:%s\nEVAL>>>\n<<<EVAL\nEVAL>>>\n' "$base" "$finding" ;;
   malformed) printf '<<<EVAL\nnot-a-valid-line\nEVAL>>>\n' ;;
