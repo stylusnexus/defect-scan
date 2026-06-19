@@ -10,6 +10,14 @@ commit messages instead (`feat:`, `fix:`, `perf:`, `docs:` … show up; `chore:`
 are hidden by default). The release commit and this file are back-merged `main → dev`
 by the deploy flow so history stays aligned.
 
+## [1.9.1](https://github.com/stylusnexus/defect-scan/compare/v1.9.0...v1.9.1) (2026-06-19)
+
+
+### Bug Fixes
+
+* **scan:** tighten P12 typosquat/confusion precision — stop over-flagging popular deps ([477bcc6](https://github.com/stylusnexus/defect-scan/commit/477bcc69bb5d31fe90db1d2a753a7a2345e95c87))
+* **scan:** tighten P12 typosquat/confusion precision — stop over-flagging popular deps ([#80](https://github.com/stylusnexus/defect-scan/issues/80)) ([#83](https://github.com/stylusnexus/defect-scan/issues/83)) ([46df11e](https://github.com/stylusnexus/defect-scan/commit/46df11ecbdf72f6bd2c21fa3c9bd91bc74e2085b))
+
 ## [1.9.0](https://github.com/stylusnexus/defect-scan/compare/v1.8.1...v1.9.0) (2026-06-18)
 
 
