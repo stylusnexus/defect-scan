@@ -20,8 +20,13 @@ sensitive** — full data-flow needs the SDK headers and a compilation database;
 below degrade to best-effort syntax/AST checks without one (skip-with-hint if absent).
 - `clang-tidy <file> -- -x objective-c -fobjc-arc` — runs the Clang static analyzer +
   clang-tidy checks; the source-friendly default (single-file, no `compile_commands.json`
-  needed, though SDK headers sharpen it). Pass `-x objective-c++` for `.mm`. Useful checks:
-  `clang-analyzer-*` (nil-deref, leaks, use-after-free), `bugprone-*`. Install:
+  needed, though SDK headers sharpen it). Pass `-x objective-c++` for `.mm`. The Cocoa
+  checkers confirmed against the LLVM checker reference are `osx.cocoa.RetainCount` (MRC
+  retain/release imbalance + over-release), `osx.cocoa.NSError` (structural `NSError**`
+  misuse — a missing non-void return / null-error deref), and `security.insecureAPI.rand`
+  (weak RNG — only when `arc4random` is available); plus the language-agnostic
+  `clang-analyzer-core.*` and `bugprone-*` checks. ObjC-specific coverage beyond those three
+  is not reliably documented — the reasoning checklist below carries it. Install:
   `brew install llvm` (then `clang-tidy` is on the LLVM path).
 - `oclint <file> -- -x objective-c` — dedicated Objective-C/C/C++ linter (~70 rules). For
   a real project it wants a compilation database (`oclint-json-compilation-database`, from
@@ -37,29 +42,37 @@ Baseline categories specialized (Clang-analyzer check / CWE):
   silent no-op returning `0`/`nil`/zeroed struct, so a failed `init`/lookup propagates as
   bogus data rather than a crash (CWE-476); **`objectAtIndex:` out of range** throws
   `NSRangeException`, and **inserting `nil`** into `NSArray`/`NSMutableDictionary` throws —
-  unchecked, both are hard crashes (`clang-analyzer-core.NullDereference`; CWE-129/476).
+  unchecked, both are hard crashes (reasoning-pass — these ObjC nil-message/range semantics
+  are not classic null derefs, so no confirmed analyzer checker fires; CWE-129/476).
 - cat#2: empty `@catch (NSException *e) {}` / `print`-only catch swallowing the exception
   (CWE-390); **`NSError**` out-param ignored** — checking `error != nil` *instead of* the
   `BOOL`/`nil` return value is a bug: Cocoa methods may set `error` on success, so the
   return value is the source of truth and the error is only meaningful when it fails
-  (CWE-252/703).
+  (`osx.cocoa.NSError` catches only the *structural* misuse — a missing non-void return /
+  null-error deref — not this checked-the-wrong-thing semantic bug, which is reasoning-pass;
+  CWE-252/703).
 - cat#3: **format-string injection** — `NSLog(userInput)`, `[NSString
   stringWithFormat:userControlled]`, `[NSException raise:format:]` with a user-controlled
-  format string → info leak / crash via `%@`/`%n` (`clang-analyzer-security.FormatString`;
-  CWE-134); **SQL injection** — string-formatted FMDB/`sqlite3_exec` queries vs `?` bound
+  format string → info leak / crash via `%@`/`%n` (reasoning-pass for the Cocoa formatting
+  APIs — no confirmed analyzer checker fires on `NSLog`/`stringWithFormat:`; the C-level
+  `-Wformat-security` compiler diagnostic may flag `printf`-family cases only; CWE-134);
+  **SQL injection** — string-formatted FMDB/`sqlite3_exec` queries vs `?` bound
   parameters (CWE-89); **insecure secret storage** — tokens/keys in `NSUserDefaults`/plist
   (unencrypted, backed up) instead of the Keychain, or hardcoded (CWE-312/798); **weak
   crypto / RNG** — CommonCrypto MD5/SHA-1/DES/`kCCOptionECBMode` for security, or
-  `arc4random`/`rand` where a CSPRNG (`SecRandomCopyBytes`) is required (CWE-327/338);
+  `arc4random`/`rand` where a CSPRNG (`SecRandomCopyBytes`) is required
+  (`security.insecureAPI.rand` flags the `rand`/`random`/`drand48` family when `arc4random`
+  is available; CWE-327/338);
   **disabled TLS validation** — `NSURLSession`/`NSURLConnection` delegate that calls
   `continueWithoutCredentialForAuthenticationChallenge` / trusts any server cert (CWE-295).
 - cat#4: **retain cycle (ARC)** — strong `self` captured in a block stored on the object
   (completion handler, `dispatch_after`, `NSTimer`, KVO) without `__weak typeof(self)
   weakSelf = self;` keeps the owner alive forever (CWE-401); **observer not torn down** —
   `dealloc` that fails to `removeObserver:`/invalidate a `NSTimer` → message to a freed
-  object when the notification/KVO fires (`clang-analyzer-core.UseAfterFree`; CWE-416);
-  **MRC imbalance** (non-ARC files) — `retain`/`alloc` without a matching `release`, or an
-  over-release/double-`release` (CWE-401/415).
+  object when the notification/KVO fires (reasoning-pass — the KVO/`dealloc`-cleanup mapping
+  to a Clang checker is unconfirmed; CWE-416); **MRC imbalance** (non-ARC files) —
+  `retain`/`alloc` without a matching `release`, or an over-release/double-`release`
+  (`osx.cocoa.RetainCount`; CWE-401/415).
 - cat#5: **main-thread (UI) violations** — UIKit/AppKit mutated off the main thread (inside
   a `NSURLSession` completion or background `dispatch_queue` without hopping to
   `dispatch_get_main_queue()`) (CWE-662); **data races** — a `NSMutableArray`/
