@@ -1,6 +1,6 @@
 precision_floor=0.65
 recall_floor=0.80
-precision_baseline=0.75
-recall_baseline=0.96
+precision_baseline=0.81
+recall_baseline=0.93
 noise_band=0.10
 overfit_band=0.15
