@@ -1245,6 +1245,24 @@ EOF
   [[ "$output" == *"recall=1.00"* ]]
 }
 
+@test "eval: objc corpus scores a clean run 1.0 and has a near-miss" {
+  corpus="$BATS_TEST_DIRNAME/eval/objc/seen"
+  [ -s "$corpus/bug_format_string.m.expected" ]
+  [ -f "$corpus/clean_weak_self.m.expected" ] && [ ! -s "$corpus/clean_weak_self.m.expected" ]
+  f="$BATS_TEST_TMPDIR/oc"
+  {
+    echo "bug_index_oob.m:4:cat#1"
+    echo "bug_swallowed_error.m:5:cat#2"
+    echo "bug_format_string.m:4:cat#3"
+    echo "bug_retain_cycle.m:10:cat#4"
+    echo "bug_data_race.m:12:cat#5"
+  } > "$f"
+  run "$DETECT" eval "$corpus" "$f"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"precision=1.00"* ]]
+  [[ "$output" == *"recall=1.00"* ]]
+}
+
 @test "eval: rust corpus scores a clean run 1.0 and has a near-miss" {
   corpus="$BATS_TEST_DIRNAME/eval/rust/seen"
   [ -s "$corpus/bug_unwrap.rs.expected" ]
