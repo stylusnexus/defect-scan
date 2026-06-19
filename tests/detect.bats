@@ -675,7 +675,7 @@ EOF
 }
 
 @test "every profile declares the four required sections in order" {
-  for p in generic python react-typescript dart ruby go csharp java yaml rust kotlin swift php shell; do
+  for p in generic python react-typescript dart ruby go csharp java yaml rust kotlin swift php shell objc; do
     f="$BATS_TEST_DIRNAME/../skills/scan/profiles/$p.md"
     [ -f "$f" ]
     grep -qE '^## Detection'           "$f"
@@ -1156,6 +1156,12 @@ EOF
   [[ "$output" == *"swift"* ]]
 }
 
+@test "stacks: detects objc from Podfile" {
+  run "$DETECT" stacks "$BATS_TEST_DIRNAME/fixtures/objc"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"objc"* ]]
+}
+
 @test "stacks: detects php from composer.json" {
   run "$DETECT" stacks "$BATS_TEST_DIRNAME/fixtures/php"
   [ "$status" -eq 0 ]
@@ -1321,6 +1327,9 @@ EOF
   [[ "$("$DETECT" __fmget "$P/php.md" detect_files)" == *"composer.json"* ]]
   [ "$("$DETECT" __fmget "$P/shell.md" name)" = "shell" ]
   [[ "$("$DETECT" __fmget "$P/shell.md" extensions)" == *"sh"* ]]   # detect_files intentionally empty
+  [ "$("$DETECT" __fmget "$P/objc.md" name)" = "objc" ]
+  [[ "$("$DETECT" __fmget "$P/objc.md" extensions)" == *"mm"* ]]
+  [[ "$("$DETECT" __fmget "$P/objc.md" detect_files)" == *"Podfile"* ]]
 }
 
 @test "profiles: lists built-ins with origin=builtin" {

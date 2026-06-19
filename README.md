@@ -7,7 +7,7 @@ confidence tiers (correlated against the issue tracker). Report-only by default;
 `--fix` applies the high-confidence tier.
 
 ## Built-in languages
-14 profiles, each pairing the language's real analyzers with a reasoning checklist
+15 profiles, each pairing the language's real analyzers with a reasoning checklist
 mapped to the **six baseline defect categories** + language-specific footguns (cat#1–5
 cover correctness and security fundamentals; **cat#6 — supply-chain / dependency
 integrity** — covers npm lifecycle abuse, typosquat / dependency-confusion, lockfile
@@ -23,6 +23,7 @@ tampering, and install-time exfil, complementing `npm audit` and `osv-scanner`):
 | **java** | Error Prone, SpotBugs + find-sec-bugs, PMD, OWASP dependency-check |
 | **kotlin** | detekt, ktlint · +Android Lint |
 | **swift** | SwiftLint, swift-format |
+| **objc** (Objective-C / ObjC++) | clang-tidy (Clang static analyzer), oclint |
 | **php** | PHPStan, Psalm (+taint), composer audit |
 | **rust** | clippy, cargo-audit, cargo-deny |
 | **dart** (Flutter) | dart/flutter analyze |
