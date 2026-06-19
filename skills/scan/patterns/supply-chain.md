@@ -104,6 +104,10 @@ addition to) the intended package.
    that is one character substitution, one character deletion/insertion, or a
    word-boundary separator change (`-` vs `` vs `_`) from a top-1000 npm package
    is a typosquat candidate. Flag it; note the suspected intended package.
+   An **exact** match to a well-known package (`express`, `lodash`, `react`,
+   `axios`, `typescript`, …) is the legitimate package *itself*, not a typosquat —
+   **never flag the correctly-spelled name.** The finding is the *misspelling* that
+   shadows it, never the real package.
 2. **Internal-looking scopes must resolve to the internal registry.** A scope
    matching a pattern in the `supply-chain-config` `internal_scope` allowlist that
    resolves (per NPMRC) to the configured `internal_registry` is **expected and
@@ -114,6 +118,13 @@ addition to) the intended package.
 3. **Absence of an NPMRC entry for an internal scope is itself a signal.** If a
    scoped dependency exists but the NPMRC section shows no `@scope:registry=…` for
    that scope, npm will silently fall back to the public registry.
+4. **Judge every dependency name on its own — no halo effect.** P12 is decided
+   *per name*, from the name (and its scope/registry routing) alone. A repo having a
+   malicious lifecycle script (P11), an exfil payload (P14), or a tampered lockfile
+   (P13) does **not** make that repo's *ordinary, correctly-named* dependencies into
+   P12 findings. The malicious `postinstall` is the P11 finding; `express` and
+   `lodash` sitting beside it are still just `express` and `lodash`. Do not let one
+   supply-chain signal contaminate your read of the dependency list.
 
 **Detection heuristic:** Read the DEPENDENCIES and NPMRC sections. For each name:
 (a) compute edit distance mentally against well-known packages and flag one-or-two-
@@ -129,6 +140,17 @@ with large download counts. Only flag cases where the resemblance to a well-know
 package is strong AND the suspected target package is the obvious intended
 dependency given the project's context. When uncertain, do NOT flag — note it as
 a low-confidence observation and let the reviewer check npm manually.
+
+**A P12 finding requires a concrete, name-level signal** — a genuine lookalike/typo,
+or an un-allowlisted internal-looking scope resolving to a public registry. The
+following are **NOT** P12 findings, and flagging them is the precision failure this
+pattern most often makes:
+- A popular, correctly-spelled package (`express`, `lodash`, `react`, `chalk`, …) —
+  *its mere presence in the dependency list is never a finding.*
+- A dependency that is simply *unfamiliar* — unusual ≠ typosquat. Absent a concrete
+  lookalike target, an unknown name is an observation, not a P12 finding.
+- Any dependency flagged *only because the repo has other supply-chain issues*
+  (see invariant 4 — no halo effect).
 
 **Confidence tier:** Low–Medium by default. Adversarial verification is MANDATORY
 here because false positives are costly (a legitimate dependency flagged as
