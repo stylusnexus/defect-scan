@@ -10,6 +10,19 @@ commit messages instead (`feat:`, `fix:`, `perf:`, `docs:` … show up; `chore:`
 are hidden by default). The release commit and this file are back-merged `main → dev`
 by the deploy flow so history stays aligned.
 
+## [1.10.0](https://github.com/stylusnexus/defect-scan/compare/v1.9.1...v1.10.0) (2026-06-19)
+
+
+### Features
+
+* **defect-scan:** add objc (Objective-C / ObjC++) profile ([#87](https://github.com/stylusnexus/defect-scan/issues/87)) ([f0b4ff9](https://github.com/stylusnexus/defect-scan/commit/f0b4ff96d7c9a9ec00ec5e55b15e74cadb217997))
+* **defect-scan:** Objective-C / ObjC++ profile + eval corpus ([4bf7df1](https://github.com/stylusnexus/defect-scan/commit/4bf7df12391180d75056238bacd0af6ea8323aca))
+
+
+### Bug Fixes
+
+* **scan:** correct objc profile analyzer attributions ([#88](https://github.com/stylusnexus/defect-scan/issues/88)) ([d7757a1](https://github.com/stylusnexus/defect-scan/commit/d7757a145264dd8337a1b78f8fcf04cde7d50bb8))
+
 ## [1.9.1](https://github.com/stylusnexus/defect-scan/compare/v1.9.0...v1.9.1) (2026-06-19)
 
 
