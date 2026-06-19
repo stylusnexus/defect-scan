@@ -675,7 +675,7 @@ EOF
 }
 
 @test "every profile declares the four required sections in order" {
-  for p in generic python react-typescript dart ruby go csharp java yaml rust kotlin swift php shell; do
+  for p in generic python react-typescript dart ruby go csharp java yaml rust kotlin swift php shell objc; do
     f="$BATS_TEST_DIRNAME/../skills/scan/profiles/$p.md"
     [ -f "$f" ]
     grep -qE '^## Detection'           "$f"
@@ -1156,6 +1156,12 @@ EOF
   [[ "$output" == *"swift"* ]]
 }
 
+@test "stacks: detects objc from Podfile" {
+  run "$DETECT" stacks "$BATS_TEST_DIRNAME/fixtures/objc"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"objc"* ]]
+}
+
 @test "stacks: detects php from composer.json" {
   run "$DETECT" stacks "$BATS_TEST_DIRNAME/fixtures/php"
   [ "$status" -eq 0 ]
@@ -1232,6 +1238,24 @@ EOF
     echo "bug_force_unwrap.swift:2:cat#1"
     echo "bug_try_bang.swift:3:cat#1"
     echo "bug_retain_cycle.swift:4:cat#4"
+  } > "$f"
+  run "$DETECT" eval "$corpus" "$f"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"precision=1.00"* ]]
+  [[ "$output" == *"recall=1.00"* ]]
+}
+
+@test "eval: objc corpus scores a clean run 1.0 and has a near-miss" {
+  corpus="$BATS_TEST_DIRNAME/eval/objc/seen"
+  [ -s "$corpus/bug_format_string.m.expected" ]
+  [ -f "$corpus/clean_weak_self.m.expected" ] && [ ! -s "$corpus/clean_weak_self.m.expected" ]
+  f="$BATS_TEST_TMPDIR/oc"
+  {
+    echo "bug_index_oob.m:4:cat#1"
+    echo "bug_swallowed_error.m:5:cat#2"
+    echo "bug_format_string.m:4:cat#3"
+    echo "bug_retain_cycle.m:10:cat#4"
+    echo "bug_data_race.m:12:cat#5"
   } > "$f"
   run "$DETECT" eval "$corpus" "$f"
   [ "$status" -eq 0 ]
@@ -1321,6 +1345,9 @@ EOF
   [[ "$("$DETECT" __fmget "$P/php.md" detect_files)" == *"composer.json"* ]]
   [ "$("$DETECT" __fmget "$P/shell.md" name)" = "shell" ]
   [[ "$("$DETECT" __fmget "$P/shell.md" extensions)" == *"sh"* ]]   # detect_files intentionally empty
+  [ "$("$DETECT" __fmget "$P/objc.md" name)" = "objc" ]
+  [[ "$("$DETECT" __fmget "$P/objc.md" extensions)" == *"mm"* ]]
+  [[ "$("$DETECT" __fmget "$P/objc.md" detect_files)" == *"Podfile"* ]]
 }
 
 @test "profiles: lists built-ins with origin=builtin" {
