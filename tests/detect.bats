@@ -1622,6 +1622,64 @@ JSON
   [ "$status" -eq 0 ]
 }
 
+@test "detect.sh usage lists the semgrep-trace subcommand" {
+  run "$DETECT" bogus
+  [[ "$output" == *"semgrep-trace"* ]]
+}
+
+@test "semgrep-trace: renders source→sink path with intermediate vars" {
+  fix="$BATS_TEST_DIRNAME/fixtures/semgrep/trace-sample.json"
+  run bash -c "'$DETECT' semgrep-trace < '$fix'"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"FINDING py.tainted-os-system @ app/vuln.py:6 [ERROR]"* ]]
+  [[ "$output" == *"SOURCE: app/vuln.py:3"* ]]
+  [[ "$output" == *"~> greeting @ app/vuln.py:4"* ]]
+  [[ "$output" == *"~> cmd @ app/vuln.py:5"* ]]
+  [[ "$output" == *"SINK:   app/vuln.py:6"* ]]
+}
+
+@test "semgrep-trace: a null dataflow_trace degrades to an honest (none) note, not silence" {
+  fix="$BATS_TEST_DIRNAME/fixtures/semgrep/trace-sample.json"
+  run bash -c "'$DETECT' semgrep-trace < '$fix'"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"FINDING js.no-trace-rule"* ]]
+  [[ "$output" == *"TRACE: (none"* ]]
+}
+
+@test "semgrep-trace: no jq is INCONCLUSIVE (never silent, exit 0)" {
+  fix="$BATS_TEST_DIRNAME/fixtures/semgrep/trace-sample.json"
+  run bash -c "DEFECT_SCAN_NO_JQ=1 '$DETECT' semgrep-trace < '$fix'"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"INCONCLUSIVE"* ]]
+}
+
+@test "semgrep-trace: empty stdin is a clean no-op (exit 0, no output)" {
+  run bash -c "printf '' | '$DETECT' semgrep-trace"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "semgrep-trace: garbage JSON degrades to INCONCLUSIVE, not a crash" {
+  run bash -c "printf 'not json{' | '$DETECT' semgrep-trace"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"INCONCLUSIVE"* ]]
+}
+
+@test "semgrep-trace: caps output volume via DEFECT_SCAN_SEMGREP_TRACE_MAX" {
+  many="$BATS_TEST_TMPDIR/many.json"
+  # 5 trace-less findings; cap at 2 → only 2 FINDING headers survive
+  printf '{"results":[' > "$many"
+  for i in 1 2 3 4 5; do
+    [ "$i" -gt 1 ] && printf ',' >> "$many"
+    printf '{"check_id":"r%s","path":"f%s.py","start":{"line":%s},"extra":{"message":"m","severity":"ERROR","dataflow_trace":null}}' "$i" "$i" "$i" >> "$many"
+  done
+  printf ']}' >> "$many"
+  run bash -c "DEFECT_SCAN_SEMGREP_TRACE_MAX=2 '$DETECT' semgrep-trace < '$many'"
+  [ "$status" -eq 0 ]
+  count=$(printf '%s\n' "$output" | grep -c '=== FINDING')
+  [ "$count" -eq 2 ]
+}
+
 @test "manifest: exits 0 when it emits a (non-truncated) SCRIPT section" {
   repo="$BATS_TEST_TMPDIR/scexit"; mkdir -p "$repo/scripts"
   printf '{ "scripts": { "postinstall": "node scripts/setup.js" } }\n' > "$repo/package.json"

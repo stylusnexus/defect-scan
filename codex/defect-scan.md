@@ -42,11 +42,17 @@ shell directly, capture JSON with `jq`, read files with your own tools.
    inconclusive, not "clean"). **Origin-gate:** built-in profiles auto-run; for
    user/project profiles, CONFIRM with the user before running their tools.
    Known-vulnerable dependency findings from `npm audit` / `osv-scanner` are **cat#6**
-   (OWASP A06) — tag them accordingly.
+   (OWASP A06) — tag them accordingly. When running `semgrep`, add `--dataflow-traces`
+   and pipe the JSON through `"$DETECT" semgrep-trace` to reshape each finding into a
+   `SOURCE → ~> intermediates → SINK` block for the reasoning pass (taint-mode +
+   Pro/login feature; OSS emits no trace and `semgrep-trace` prints an honest
+   `(none …)` — a graceful no-op).
 4. **Reasoning pass** — read the in-scope files against each profile's checklist +
    `baseline-categories.md` + the pattern packs (including `patterns/supply-chain.md`
    P11–P14 for supply-chain / `cat#6` findings); run the **adversarial verification**
-   step before ranking every reasoning-only finding. For npm repos, reason over the
+   step before ranking every reasoning-only finding. When a semgrep finding carries a
+   `SOURCE→SINK` trace (step 3), reason about that specific path rather than
+   re-deriving reachability. For npm repos, reason over the
    manifest sections using P11–P14. Before flagging dependency-confusion (P12), read
    `"$DETECT" supply-chain-config "$PWD"` and suppress findings for scopes declared in
    `internal_scope` that correctly resolve to the `internal_registry`.

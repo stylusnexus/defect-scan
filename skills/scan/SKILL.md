@@ -99,9 +99,17 @@ arbitrary commands (pattern P4).
 **Cross-cutting deep analyzers (optional, any stack — run if installed).** These
 sharpen ground truth for the reasoning categories tools usually miss; resolve each
 via `lib/detect.sh tool <name>` and skip-with-hint if absent:
-- **`semgrep`** — `semgrep --config auto --json <paths>` — multi-language taint
-  rules covering injection (cat#3), subprocess/argv hygiene (P4), and SQL misuse
-  (P9). The single highest-value optional add. Findings are **High** (tool-confirmed).
+- **`semgrep`** — `semgrep --config auto --dataflow-traces --json <paths>` —
+  multi-language taint rules covering injection (cat#3), subprocess/argv hygiene
+  (P4), and SQL misuse (P9). The single highest-value optional add. Findings are
+  **High** (tool-confirmed). Pipe the JSON through
+  `lib/detect.sh semgrep-trace` to reshape each finding into a compact
+  `SOURCE → ~> intermediates → SINK` block for the Stage 3 reasoning pass — feeding
+  the model the actual tainted path beats re-deriving reachability from the location
+  alone. The populated trace is a **taint-mode + Pro-engine/login** feature; OSS
+  semgrep returns `dataflow_trace=null` and `semgrep-trace` prints an honest
+  `(none …)` per finding — a graceful no-op, not an error. (Trace is single-file /
+  intra-procedural; the cross-file version is tracked separately.)
 - **`gitleaks`** — committed secrets/credentials (cat#3-adjacent supply-chain).
   **Scan committed content, and pre-filter, or it's pure noise.** Use git mode with the
   bundled baseline config:
@@ -140,6 +148,12 @@ P1–P10, `patterns/supply-chain.md` P11–P14, plus any user/project pattern pa
 reasoning-only finding, run an **adversarial verification** pass before ranking: state the
 strongest case that the finding is NOT a real defect (guard exists elsewhere, input is trusted,
 path unreachable).
+
+When a semgrep finding carries a `SOURCE → ~> intermediates → SINK` trace (from
+`lib/detect.sh semgrep-trace`, Stage 2), reason about *that specific path* — is the
+source attacker-controlled, is there a sanitizer between it and the sink — rather than
+re-deriving reachability from the finding location. A `(none …)` trace (the common
+case on OSS semgrep) means reason from the location as before.
 
 **Supply-chain reasoning (npm repos — `cat#6`).** When manifest sections are available
 (Stage 1 supply-chain hook), reason over the `LIFECYCLE`, `DEPENDENCIES`, `LOCKFILE`,
