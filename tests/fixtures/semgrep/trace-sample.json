@@ -1,0 +1,12 @@
+{"results":[
+ {"check_id":"py.tainted-os-system","path":"app/vuln.py","start":{"line":6,"col":5},
+  "extra":{"message":"user input flows into os.system","severity":"ERROR",
+   "dataflow_trace":{
+     "taint_source":["CliLoc",[{"path":"app/vuln.py","start":{"line":3,"col":12}},"req.get(\"name\")"]],
+     "intermediate_vars":[
+       {"location":{"path":"app/vuln.py","start":{"line":4,"col":5}},"content":"greeting"},
+       {"location":{"path":"app/vuln.py","start":{"line":5,"col":5}},"content":"cmd"}],
+     "taint_sink":["CliLoc",[{"path":"app/vuln.py","start":{"line":6,"col":5}},"os.system(cmd)"]]}}},
+ {"check_id":"js.no-trace-rule","path":"web/index.js","start":{"line":12,"col":1},
+  "extra":{"message":"eval of user data","severity":"WARNING","dataflow_trace":null}}
+]}
