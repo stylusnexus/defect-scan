@@ -313,6 +313,17 @@ _mk_grader_corpus() {  # $1=dir : one buggy fixture (line 4, cat#2) + one clean
   grep -qE '^cat#5:' "$f"
 }
 
+@test "eval-legend: works from a skill path containing spaces (#109 regression guard)" {
+  # An unquoted profile-arg substitution word-split a spaced install path → empty legend.
+  spaced="$BATS_TEST_TMPDIR/space dir/skills"
+  mkdir -p "$spaced"
+  cp -R "$BATS_TEST_DIRNAME/../skills/scan" "$spaced/scan"
+  run "$spaced/scan/lib/detect.sh" eval-legend react-typescript
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"cat#1 = Null"* ]]      # baseline cat# legend present (was empty pre-fix)
+  [[ "$output" == *"index-as-key"* ]]      # the cat#5 profile extension still merges
+}
+
 @test "rust/shell/yaml profiles declare an ## Eval labels section (#105 source)" {
   for p in rust shell yaml; do
     grep -qE '^## Eval labels' "$BATS_TEST_DIRNAME/../skills/scan/profiles/$p.md"

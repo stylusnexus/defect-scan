@@ -472,7 +472,7 @@ cmd_eval_legend() {
   # file 2 collects the profile's ## Eval labels (cat#N extensions merged into the cat;
   # plain labels appended after). ';' in any source text → ',' so it can't be mistaken for
   # the legend's own "; " separator.
-  awk '
+  _legend_awk='
     FNR==1 { fidx++ }
     fidx==1 {                                   # baseline-categories.md
       if (/^## [0-9]+\./) { if (cn) csave(); cn=$2; sub(/\./,"",cn)
@@ -506,7 +506,13 @@ cmd_eval_legend() {
       printf "\n"
     }
     function csave() { gsub(/`/,"",cb); gsub(/;/,",",cb); gsub(/[ \t]+$/,"",cb); CT[cn]=ct; CB[cn]=cb }
-  ' "$bc" $( [ -f "$prof" ] && printf '%s' "$prof" ) 2>/dev/null
+  '
+  # Pass the profile as a QUOTED arg — an unquoted $(...) word-splits a skill path that
+  # contains spaces (e.g. macOS "Application Support"), making awk fail with an EMPTY
+  # legend and silently reintroducing the scope-blindness #109 fixes. The END csave()
+  # flush already covers the profile-absent branch.
+  if [ -f "$prof" ]; then awk "$_legend_awk" "$bc" "$prof" 2>/dev/null
+  else awk "$_legend_awk" "$bc" 2>/dev/null; fi
 }
 
 # codex-verify <prompt-file>: cross-model second opinion via Codex (a DIFFERENT model
