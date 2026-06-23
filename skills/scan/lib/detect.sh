@@ -451,6 +451,52 @@ cmd_eval_categories() {
   } | sort -u
 }
 
+# eval-legend <lang>: build the category-definition legend the eval runners inject into
+# the headless prompt. Centralized here (was duplicated, title-only, in BOTH runners —
+# a divergence + correctness bug, #105) so it has ONE definition and the model gets the
+# full scope, not just the title. Emits a single "; "-separated string:
+#   cat#N = <title>: <body>   (the body from baseline-categories.md, not just the title)
+#   <label> = <def>          (language-specific labels from the profile's ## Eval labels)
+# The body/def carry the scope the eval model needs but cannot read (it's told not to
+# open skill files): e.g. that rust panic-prone indexing is cat#1, not the `panic` label.
+cmd_eval_legend() {
+  lang="${1:?usage: detect.sh eval-legend <lang>}"
+  bc="$(skill_dir)/baseline-categories.md"
+  # cat#1..6: title + first body paragraph, one line each. ';' in source → ',' so it
+  # can't be mistaken for the legend's own "; " separator.
+  [ -f "$bc" ] && awk '
+    /^## [0-9]+\./ {
+      if (n) emit()
+      n=$2; sub(/\./,"",n)
+      t=$0; sub(/^## [0-9]+\.[ ]+/,"",t); sub(/[ ]+\xc2\xb7.*/,"",t); sub(/[ ]+·.*/,"",t)
+      body=""; closed=0; next
+    }
+    /^## / { if (n) emit(); n=""; next }     # any non-numbered ## ends the current cat
+    {
+      if (!n) next
+      if ($0 ~ /^[ \t]*$/) { if (body!="") closed=1; next }
+      if (!closed) body = body (body?" ":"") $0
+    }
+    END { if (n) emit() }
+    function emit() { gsub(/`/,"",body); gsub(/;/,",",body); gsub(/[ \t]+$/,"",body)
+      printf "cat#%s = %s: %s; ", n, t, body }
+  ' "$bc" 2>/dev/null
+  # language-specific labels from the built-in profile's "## Eval labels" section.
+  prof="$(skill_dir)/profiles/$lang.md"
+  [ -f "$prof" ] && awk '
+    /^## Eval labels/ { insec=1; next }
+    insec && /^## / { exit }
+    insec && /^[A-Za-z]/ {
+      i=index($0,":"); if (i) {
+        k=substr($0,1,i-1); v=substr($0,i+1)
+        gsub(/^[ \t]+|[ \t]+$/,"",k); gsub(/^[ \t]+|[ \t]+$/,"",v); gsub(/`/,"",v); gsub(/;/,",",v)
+        printf "%s = %s; ", k, v
+      }
+    }
+  ' "$prof" 2>/dev/null
+  printf '\n'
+}
+
 # codex-verify <prompt-file>: cross-model second opinion via Codex (a DIFFERENT model
 # than the one running the scan = different blind spots). Runs Codex NON-INTERACTIVELY
 # and READ-ONLY — it may reason and read, but never write or run side-effecting
@@ -944,6 +990,7 @@ main() {
     preflight)    cmd_preflight "$@" ;;
     eval)         cmd_eval "$@" ;;
     eval-categories) cmd_eval_categories "$@" ;;
+    eval-legend)  cmd_eval_legend "$@" ;;
     eval-run)     cmd_eval_run "$@" ;;
     eval-gaps)    cmd_eval_gaps "$@" ;;
     codex-verify) cmd_codex_verify "$@" ;;
@@ -965,7 +1012,7 @@ main() {
     __evalblock) extract_eval_block ;;
     __evalgate)   eval_gate "$@" ;;
     __evalupdate) eval_update_baseline "$@" ;;
-    *) echo "usage: detect.sh {preflight|eval|eval-categories|eval-run|eval-gaps|codex-verify|stacks|tool|scope|triage|manifest|semgrep-trace|supply-chain-config|issues|issues-create|issues-ensure-label|labels|profiles|patterns} ..." >&2; return 2 ;;
+    *) echo "usage: detect.sh {preflight|eval|eval-categories|eval-legend|eval-run|eval-gaps|codex-verify|stacks|tool|scope|triage|manifest|semgrep-trace|supply-chain-config|issues|issues-create|issues-ensure-label|labels|profiles|patterns} ..." >&2; return 2 ;;
   esac
 }
 

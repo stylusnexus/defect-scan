@@ -18,12 +18,13 @@ if [ -n "$labels" ]; then
 else
   labelinstr="category = cat#1..cat#5 or a language-specific label"
 fi
-# The labels above are opaque IDs (cat#1..5). The headless run is sandboxed to the temp
-# work dir, so the model CANNOT read the skill's baseline-categories.md to learn what they
-# mean — without the definitions it thrashes on denied reads (→ missing EVAL block, PARTIAL)
-# and guesses categories (cat#2-vs-cat#3 flips). Inject the definitions inline from the dev
-# repo so the run is self-contained. See issue #68.
-legend="$(awk '/^## [0-9]+\./ { n=$2; sub(/\./,"",n); t=$0; sub(/^## [0-9]+\. /,"",t); sub(/  .*/,"",t); printf "cat#%s = %s; ", n, t }' "$(dirname "$detect")/../baseline-categories.md" 2>/dev/null)"
+# The labels above are opaque IDs (cat#1..6 + language-specific). The headless run is
+# sandboxed to the temp work dir, so the model CANNOT read the skill files to learn what
+# they mean — without definitions it thrashes on denied reads (→ missing EVAL block,
+# PARTIAL) and guesses categories (cat#2-vs-cat#3 flips, panic-vs-cat#1). Inject the full
+# legend (cat# bodies + language-specific label defs) built by detect.sh — one source,
+# shared with codex.sh (divergence is a bug). See #68 (title-only legend) / #105 (full).
+legend="$(sh "$detect" eval-legend "$lang" 2>/dev/null)"
 work="$(mktemp -d)"; trap 'rm -rf "$work"' EXIT
 # A DIRECTORY fixture is a mini-repo: copy its contents and scan the whole dir, asking
 # for paths relative to it. A FILE fixture: copy the one file and scan its basename.

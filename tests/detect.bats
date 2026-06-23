@@ -261,6 +261,55 @@ _mk_grader_corpus() {  # $1=dir : one buggy fixture (line 4, cat#2) + one clean
   [[ "$output" == *"widget"* ]] && [[ "$output" == *"cat#3"* ]]
 }
 
+@test "usage lists the eval-legend subcommand" {
+  run "$DETECT" bogus
+  [[ "$output" == *"eval-legend"* ]]
+}
+
+@test "eval-legend: injects cat# BODIES, not just titles (#105)" {
+  run "$DETECT" eval-legend rust
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"cat#1 = Null"* ]]                 # title
+  [[ "$output" == *"dereferences"* ]]                 # body word — absent from the old title-only legend
+  [[ "$output" == *"cat#6 = Supply-chain"* ]]
+}
+
+@test "eval-legend: rust panic label is defined and disambiguated from cat#1 (#105)" {
+  run "$DETECT" eval-legend rust
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"panic = "* ]]
+  # the exact gap that caused the 0.67/0.67 drift: indexing belongs to cat#1, not panic
+  [[ "$output" == *"NOT panic-prone indexing"* ]]
+}
+
+@test "eval-legend: shell quoting and yaml coerce labels are defined (#105)" {
+  run "$DETECT" eval-legend shell
+  [[ "$output" == *"quoting = "* ]]
+  run "$DETECT" eval-legend yaml
+  [[ "$output" == *"coerce = "* ]]
+}
+
+@test "eval-legend: a language with no custom labels emits only cat# defs (#105)" {
+  run "$DETECT" eval-legend csharp
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"cat#3 = Injection"* ]]
+  [[ "$output" != *" = "*"panic"* ]]   # no stray language-specific label
+}
+
+@test "rust/shell/yaml profiles declare an ## Eval labels section (#105 source)" {
+  for p in rust shell yaml; do
+    grep -qE '^## Eval labels' "$BATS_TEST_DIRNAME/../skills/scan/profiles/$p.md"
+  done
+}
+
+@test "both runners build the legend via detect.sh eval-legend, not a title-only awk (#105)" {
+  for rn in claude codex; do
+    f="$BATS_TEST_DIRNAME/../tests/eval/runners/$rn.sh"
+    grep -q 'eval-legend' "$f"
+    ! grep -q 'cat#%s = %s; ' "$f"   # the old title-only awk must be gone
+  done
+}
+
 _mk_eval_corpus() {  # $1 = root, $2 = lang
   mkdir -p "$1/$2/seen"
   printf 'x\n' > "$1/$2/seen/bug_one.ext"

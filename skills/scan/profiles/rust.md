@@ -78,3 +78,6 @@ rewrites (`needless_return`, `map_clone`, `useless_vec`, idiomatic-iterator) via
 by design; the fix is a human decision), **correctness** findings (verify intent), any
 `unsafe`-related finding (soundness is a human argument), `cargo audit`/`cargo deny`
 results (a dep bump needs review + tests), and cat#2/#3/#5 (semantic/security decisions).
+
+## Eval labels
+panic: `.unwrap()`/`.expect()`/`panic!`/`todo!`/`unimplemented!`/`unreachable!` on a recoverable path — panics in prod instead of propagating via `?` (CWE-248/617). NOT panic-prone indexing/slicing `v[i]`, which is cat#1.

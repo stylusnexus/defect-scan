@@ -18,10 +18,11 @@ if [ -n "$labels" ]; then
 else
   labelinstr="category = cat#1..cat#5 or a language-specific label"
 fi
-# Opaque label IDs (cat#1..5) need their definitions inline so the model labels by meaning,
-# not by guessing the numbers — keeps this runner self-contained and parallel with
-# claude.sh (divergence between runners is a bug). See issue #68.
-legend="$(awk '/^## [0-9]+\./ { n=$2; sub(/\./,"",n); t=$0; sub(/^## [0-9]+\. /,"",t); sub(/  .*/,"",t); printf "cat#%s = %s; ", n, t }' "$(dirname "$detect")/../baseline-categories.md" 2>/dev/null)"
+# Opaque label IDs (cat#1..6 + language-specific) need their definitions inline so the
+# model labels by meaning, not by guessing — keeps this runner self-contained and parallel
+# with claude.sh (divergence is a bug). The full legend (cat# bodies + language-specific
+# label defs) is built once by detect.sh. See #68 (title-only legend) / #105 (full).
+legend="$(sh "$detect" eval-legend "$lang" 2>/dev/null)"
 work="$(mktemp -d)"; trap 'rm -rf "$work"' EXIT
 # A DIRECTORY fixture is a mini-repo: copy its contents and scan the whole dir, asking
 # for paths relative to it. A FILE fixture: copy the one file and scan its basename.
