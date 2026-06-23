@@ -455,46 +455,64 @@ cmd_eval_categories() {
 # the headless prompt. Centralized here (was duplicated, title-only, in BOTH runners —
 # a divergence + correctness bug, #105) so it has ONE definition and the model gets the
 # full scope, not just the title. Emits a single "; "-separated string:
-#   cat#N = <title>: <body>   (the body from baseline-categories.md, not just the title)
-#   <label> = <def>          (language-specific labels from the profile's ## Eval labels)
-# The body/def carry the scope the eval model needs but cannot read (it's told not to
-# open skill files): e.g. that rust panic-prone indexing is cat#1, not the `panic` label.
+#   cat#N = <title>: <body> [ (lang-specific: <ext>) ]   (body from baseline-categories.md;
+#                          <ext> = a profile's language SPECIALIZATION of that baseline cat)
+#   <label> = <def>          (language-specific NON-cat# labels, e.g. rust panic)
+# The body/def/ext carry scope the eval model needs but cannot read (it's told not to open
+# skill files): e.g. rust panic-prone indexing is cat#1 (#105), and a React `key={index}`
+# is the react-typescript specialization of cat#5 (#109) — neither is in the bare baseline
+# definition. A profile contributes both via its "## Eval labels" section: a `cat#N: …`
+# line EXTENDS baseline cat#N's scope; a `<label>: …` line defines a new non-cat# label.
 cmd_eval_legend() {
   lang="${1:?usage: detect.sh eval-legend <lang>}"
   bc="$(skill_dir)/baseline-categories.md"
-  # cat#1..6: title + first body paragraph, one line each. ';' in source → ',' so it
-  # can't be mistaken for the legend's own "; " separator.
-  [ -f "$bc" ] && awk '
-    /^## [0-9]+\./ {
-      if (n) emit()
-      n=$2; sub(/\./,"",n)
-      t=$0; sub(/^## [0-9]+\.[ ]+/,"",t); sub(/[ ]+\xc2\xb7.*/,"",t); sub(/[ ]+·.*/,"",t)
-      body=""; closed=0; next
-    }
-    /^## / { if (n) emit(); n=""; next }     # any non-numbered ## ends the current cat
-    {
-      if (!n) next
-      if ($0 ~ /^[ \t]*$/) { if (body!="") closed=1; next }
-      if (!closed) body = body (body?" ":"") $0
-    }
-    END { if (n) emit() }
-    function emit() { gsub(/`/,"",body); gsub(/;/,",",body); gsub(/[ \t]+$/,"",body)
-      printf "cat#%s = %s: %s; ", n, t, body }
-  ' "$bc" 2>/dev/null
-  # language-specific labels from the built-in profile's "## Eval labels" section.
   prof="$(skill_dir)/profiles/$lang.md"
-  [ -f "$prof" ] && awk '
-    /^## Eval labels/ { insec=1; next }
-    insec && /^## / { exit }
-    insec && /^[A-Za-z]/ {
-      i=index($0,":"); if (i) {
-        k=substr($0,1,i-1); v=substr($0,i+1)
-        gsub(/^[ \t]+|[ \t]+$/,"",k); gsub(/^[ \t]+|[ \t]+$/,"",v); gsub(/`/,"",v); gsub(/;/,",",v)
-        printf "%s = %s; ", k, v
-      }
+  [ -f "$bc" ] || { printf '\n'; return 0; }
+  # Single awk over baseline + (optional) profile: file 1 builds cat#1..6 (title+body),
+  # file 2 collects the profile's ## Eval labels (cat#N extensions merged into the cat;
+  # plain labels appended after). ';' in any source text → ',' so it can't be mistaken for
+  # the legend's own "; " separator.
+  _legend_awk='
+    FNR==1 { fidx++ }
+    fidx==1 {                                   # baseline-categories.md
+      if (/^## [0-9]+\./) { if (cn) csave(); cn=$2; sub(/\./,"",cn)
+        ct=$0; sub(/^## [0-9]+\.[ ]+/,"",ct); sub(/[ ]+\xc2\xb7.*/,"",ct); sub(/[ ]+·.*/,"",ct)
+        cb=""; closed=0; next }
+      if (/^## /) { if (cn) csave(); cn=""; next }
+      if (cn) { if ($0 ~ /^[ \t]*$/) { if (cb!="") closed=1 } else if (!closed) cb=cb (cb?" ":"") $0 }
+      next
     }
-  ' "$prof" 2>/dev/null
-  printf '\n'
+    fidx==2 {                                   # profile ## Eval labels section
+      if (/^## Eval labels/) { insec=1; next }
+      if (insec && /^## /) { insec=0; next }
+      if (insec) {
+        i=index($0,":")
+        if (i && $0 ~ /^(cat#[0-9]|[A-Za-z])/) {
+          k=substr($0,1,i-1); v=substr($0,i+1)
+          gsub(/^[ \t]+|[ \t]+$/,"",k); gsub(/^[ \t]+|[ \t]+$/,"",v); gsub(/`/,"",v); gsub(/;/,",",v)
+          if (k ~ /^cat#[0-9]/) ext[k]=v
+          else { lord[++ln]=k; ldef[k]=v }
+        }
+      }
+      next
+    }
+    END {
+      if (cn) csave()                           # flush last cat if profile file was absent
+      for (i=1;i<=6;i++) {                       # CT/CB keyed by the bare number; ext by "cat#N"
+        if (i in CT) { line=CT[i] ": " CB[i]
+          if (("cat#" i) in ext) line=line " (lang-specific: " ext["cat#" i] ")"
+          printf "cat#%s = %s; ", i, line } }
+      for (j=1;j<=ln;j++) printf "%s = %s; ", lord[j], ldef[lord[j]]
+      printf "\n"
+    }
+    function csave() { gsub(/`/,"",cb); gsub(/;/,",",cb); gsub(/[ \t]+$/,"",cb); CT[cn]=ct; CB[cn]=cb }
+  '
+  # Pass the profile as a QUOTED arg — an unquoted $(...) word-splits a skill path that
+  # contains spaces (e.g. macOS "Application Support"), making awk fail with an EMPTY
+  # legend and silently reintroducing the scope-blindness #109 fixes. The END csave()
+  # flush already covers the profile-absent branch.
+  if [ -f "$prof" ]; then awk "$_legend_awk" "$bc" "$prof" 2>/dev/null
+  else awk "$_legend_awk" "$bc" 2>/dev/null; fi
 }
 
 # codex-verify <prompt-file>: cross-model second opinion via Codex (a DIFFERENT model
