@@ -83,6 +83,46 @@ cmd_tool() {
   fi
   return 1
 }
+
+# semgrep-pro-status [cwd]: report whether the Semgrep Pro engine is locally available —
+# the proprietary core that powers `--pro`/`--pro-intrafile` (cross-file taint + POPULATED
+# dataflow traces; the OSS engine emits neither). Prints exactly one line:
+#   available
+#   unavailable: <reason + hint>
+# READ-ONLY and NON-INSTALLING — it must NEVER run `semgrep --pro`, which triggers a
+# network auto-install of the core (so detection probes the core's PRESENCE, not by
+# invoking it). Exit 0 always (a status probe, not a gate). defect-scan never handles the
+# semgrep token: the user runs `semgrep login` + `semgrep install-semgrep-pro` and semgrep
+# stores its own credentials in ~/.semgrep — we only consume that, we don't manage it (#110).
+cmd_semgrep_pro_status() {
+  sg="$(command -v semgrep 2>/dev/null || true)"
+  [ -n "$sg" ] || { echo "unavailable: semgrep not installed (brew install semgrep / pipx install semgrep)"; return 0; }
+  # Pro core directly on PATH.
+  if command -v semgrep-core-proprietary >/dev/null 2>&1; then echo "available"; return 0; fi
+  # FULLY resolve the symlink chain (bounded) — macOS has no `readlink -f`, and Homebrew
+  # chains `bin → Cellar/<ver>/bin → libexec/bin`, with the Pro core under libexec/lib/...
+  # A single hop lands on the wrong dir and misses it. Then check known install-relative
+  # locations directly (bounded globs — cheaper than a broad `find`; an unmatched glob
+  # stays literal under POSIX sh so `[ -f ]` just fails). semgrep looks for the core "in
+  # PATH or in the semgrep package", so the package bin dir is where it lives.
+  _hops=0
+  while [ -L "$sg" ] && [ "$_hops" -lt 8 ]; do
+    _t="$(readlink "$sg" 2>/dev/null || true)"; [ -n "$_t" ] || break
+    case "$_t" in /*) sg="$_t" ;; *) sg="$(dirname "$sg")/$_t" ;; esac
+    _hops=$((_hops+1))
+  done
+  d="$(dirname "$sg")"
+  for cand in \
+    "$d/semgrep-core-proprietary" \
+    "$d"/../lib/python*/site-packages/semgrep/bin/semgrep-core-proprietary \
+    "$d"/../libexec/lib/python*/site-packages/semgrep/bin/semgrep-core-proprietary \
+    "$HOME"/.local/pipx/venvs/semgrep/lib/python*/site-packages/semgrep/bin/semgrep-core-proprietary
+  do
+    [ -f "$cand" ] && { echo "available"; return 0; }
+  done
+  echo "unavailable: Pro engine not installed — run 'semgrep login && semgrep install-semgrep-pro' (defect-scan never handles your token)"
+  return 0
+}
 cmd_scope() {
   target=""; full=""; cwd=""
   # Collect positional (non-flag, non-empty) args in order.
@@ -1073,13 +1113,14 @@ main() {
     patterns)  cmd_patterns "$@" ;;
     manifest)  cmd_manifest "$@" ;;
     semgrep-trace) cmd_semgrep_trace "$@" ;;
+    semgrep-pro-status) cmd_semgrep_pro_status "$@" ;;
     supply-chain-config) cmd_supply_chain_config "$@" ;;
     __fmget)   fm_get "$@" ;;
     __fmfield) fm_field "$@" ;;
     __evalblock) extract_eval_block ;;
     __evalgate)   eval_gate "$@" ;;
     __evalupdate) eval_update_baseline "$@" ;;
-    *) echo "usage: detect.sh {preflight|eval|eval-categories|eval-legend|eval-run|eval-gaps|codex-verify|stacks|tool|scope|triage|manifest|semgrep-trace|supply-chain-config|issues|issues-create|issues-ensure-label|labels|profiles|patterns} ..." >&2; return 2 ;;
+    *) echo "usage: detect.sh {preflight|eval|eval-categories|eval-legend|eval-run|eval-gaps|codex-verify|stacks|tool|scope|triage|manifest|semgrep-trace|semgrep-pro-status|supply-chain-config|issues|issues-create|issues-ensure-label|labels|profiles|patterns} ..." >&2; return 2 ;;
   esac
 }
 

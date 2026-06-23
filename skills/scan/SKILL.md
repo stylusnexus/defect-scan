@@ -30,6 +30,11 @@ below are shorthand for that absolute path.
 - `--cross-model` → verify reasoning findings through a second model (Codex) for a
   different-model second opinion (Stage 3b). Opt-in; needs `codex` installed; runs
   read-only. Worth it on load-bearing code (security, billing, retry/error paths).
+- `--semgrep-pro` → run semgrep with the **Pro engine** (`--pro-intrafile`), which
+  populates dataflow traces (Stage 3 path reasoning) and adds path-sensitivity the OSS
+  engine lacks. Opt-in; requires the user's own Pro auth (`semgrep login &&
+  semgrep install-semgrep-pro` — defect-scan never handles the token). Degrades to OSS
+  with a hint if Pro is unavailable. See Stage 2.
 - `--file-issues` → after the report, file a GitHub issue for each **[NEW]** finding
   (High tier by default; `--file-issues=medium` also files Medium; Low is never
   filed). A **write action** — see Stage 4b for the auth requirement, the mandatory
@@ -111,6 +116,21 @@ via `lib/detect.sh tool <name>` and skip-with-hint if absent:
   semgrep returns `dataflow_trace=null` and `semgrep-trace` prints an honest
   `(none …)` per finding — a graceful no-op, not an error. (Trace is single-file /
   intra-procedural; the cross-file version is tracked separately.)
+  **Pro engine (`--semgrep-pro`).** OSS semgrep emits no dataflow trace. When the user
+  passes `--semgrep-pro`, first probe `lib/detect.sh semgrep-pro-status` (read-only,
+  never auto-installs):
+  - `available` → run `semgrep --config auto --pro-intrafile --dataflow-traces --json
+    <paths>` (keep `--config auto` — `--pro-intrafile` selects the *engine*, not a
+    ruleset) so the trace actually populates (real path-sensitive traces → richer
+    Stage 3); note in the report header that the **Pro** engine ran.
+  - `unavailable: …` → print the hint and **fall back to the OSS invocation above**; the
+    scan continues (Pro is an enhancement, never a hard dependency).
+  defect-scan never handles the semgrep token — the user authenticates once with
+  `semgrep login` and semgrep stores its own credentials. Without `--semgrep-pro`, run
+  OSS exactly as above; if `semgrep-pro-status` reports `available` but the flag wasn't
+  passed, you may note in the report that re-running with `--semgrep-pro` would deepen
+  the taint analysis. Always report which engine (OSS vs Pro) ran — they find different
+  things.
 - **`gitleaks`** — committed secrets/credentials (cat#3-adjacent supply-chain).
   **Scan committed content, and pre-filter, or it's pure noise.** Use git mode with the
   bundled baseline config:
