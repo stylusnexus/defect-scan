@@ -56,6 +56,14 @@ shell directly, capture JSON with `jq`, read files with your own tools.
    manifest sections using P11–P14. Before flagging dependency-confusion (P12), read
    `"$DETECT" supply-chain-config "$PWD"` and suppress findings for scopes declared in
    `internal_scope` that correctly resolve to the `internal_registry`.
+   **Tiering tool findings:** deterministic non-exploitability findings (type errors,
+   lint correctness rules, known-vuln deps) are **High** on tool confirmation. A
+   **security-class** tool finding (injection cat#3, subprocess/argv P4, SQL P9, any
+   semgrep taint-mode rule, non-baseline gitleaks secret) gets a **lighter FP-filter**
+   first — state the strongest case it is NOT exploitable here; survives/uncertain →
+   **High** (`tool-confirmed ✓verified`, keep High when unsure), clearly refuted →
+   **downgrade to Medium** with both views (never drop — downgrade-only keeps recall
+   intact; outright dropping is deferred to the #76 baseline).
 5. **Report (→ correlate → file → fix)** — emit per `report-format.md`. `cat#6`
    (supply-chain / dependency integrity) is a valid report category — group both
    pattern-based supply-chain findings and tool-confirmed known-vuln findings under it.
