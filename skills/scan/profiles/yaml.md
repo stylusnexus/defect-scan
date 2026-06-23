@@ -80,3 +80,6 @@ YAML-specific (type-coercion — the silent-wrong-value class, no code category 
 decision), every Actions security finding (script injection, `pull_request_target`,
 permissions, unpinned actions), all kube-linter/kubeconform findings, duplicate-key
 resolution, and inline-secret findings. All report-only.
+
+## Eval labels
+coerce: YAML type-coercion footgun — the Norway problem (unquoted `no`/`yes`/`on`/`off`/`y`/`n` → boolean) and number/version coercion (`1.20`→`1.2`, `0777`→octal, `22:22`→base-60); quote identifiers/versions. NOT duplicate keys (cat#2) or injection (cat#3).
