@@ -42,14 +42,28 @@ shell directly, capture JSON with `jq`, read files with your own tools.
    inconclusive, not "clean"). **Origin-gate:** built-in profiles auto-run; for
    user/project profiles, CONFIRM with the user before running their tools.
    Known-vulnerable dependency findings from `npm audit` / `osv-scanner` are **cat#6**
-   (OWASP A06) — tag them accordingly.
+   (OWASP A06) — tag them accordingly. When running `semgrep`, add `--dataflow-traces`
+   and pipe the JSON through `"$DETECT" semgrep-trace` to reshape each finding into a
+   `SOURCE → ~> intermediates → SINK` block for the reasoning pass (taint-mode +
+   Pro/login feature; OSS emits no trace and `semgrep-trace` prints an honest
+   `(none …)` — a graceful no-op).
 4. **Reasoning pass** — read the in-scope files against each profile's checklist +
    `baseline-categories.md` + the pattern packs (including `patterns/supply-chain.md`
    P11–P14 for supply-chain / `cat#6` findings); run the **adversarial verification**
-   step before ranking every reasoning-only finding. For npm repos, reason over the
+   step before ranking every reasoning-only finding. When a semgrep finding carries a
+   `SOURCE→SINK` trace (step 3), reason about that specific path rather than
+   re-deriving reachability. For npm repos, reason over the
    manifest sections using P11–P14. Before flagging dependency-confusion (P12), read
    `"$DETECT" supply-chain-config "$PWD"` and suppress findings for scopes declared in
    `internal_scope` that correctly resolve to the `internal_registry`.
+   **Tiering tool findings:** deterministic non-exploitability findings (type errors,
+   lint correctness rules, known-vuln deps) are **High** on tool confirmation. A
+   **security-class** tool finding (injection cat#3, subprocess/argv P4, SQL P9, any
+   semgrep taint-mode rule, non-baseline gitleaks secret) gets a **lighter FP-filter**
+   first — state the strongest case it is NOT exploitable here; survives/uncertain →
+   **High** (`tool-confirmed ✓verified`, keep High when unsure), clearly refuted →
+   **downgrade to Medium** with both views (never drop — downgrade-only keeps recall
+   intact; outright dropping is deferred to the #76 baseline).
 5. **Report (→ correlate → file → fix)** — emit per `report-format.md`. `cat#6`
    (supply-chain / dependency integrity) is a valid report category — group both
    pattern-based supply-chain findings and tool-confirmed known-vuln findings under it.

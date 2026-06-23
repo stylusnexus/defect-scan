@@ -899,6 +899,45 @@ _manifest_resolve_scripts() {
   return 0
 }
 
+# semgrep-trace: read `semgrep --json` output on stdin; emit one compact source→sink
+# block per finding for the Stage 3 reasoning pass. Deterministic JSON reshaping only —
+# never runs semgrep (the model already did, with origin-gating + timeouts handled).
+# jq-required: semgrep's nested dataflow_trace isn't worth parsing in POSIX awk, so
+# without jq we skip-with-note and the model falls back to location-only reasoning.
+# NOTE: a populated trace is a taint-mode + (empirically) Pro/login feature — OSS
+# semgrep 1.167 returns dataflow_trace=null, so the "(none …)" branch is the common
+# path, not the exception (see issue #97). Output is capped so a noisy scan can't dump
+# thousands of traces into the prompt.
+_SEMGREP_TRACE_MAX="${DEFECT_SCAN_SEMGREP_TRACE_MAX:-50}"
+cmd_semgrep_trace() {
+  jqbin="$(command -v jq 2>/dev/null || true)"
+  [ -n "${DEFECT_SCAN_NO_JQ:-}" ] && jqbin=""   # test/CI hook: force the no-jq path
+  in="$(cat)"
+  [ -n "$in" ] || return 0                      # nothing piped → clean no-op
+  if [ -z "$jqbin" ]; then
+    echo "(semgrep-trace: jq unavailable — INCONCLUSIVE; reason from finding locations only)"
+    return 0
+  fi
+  # `|| echo`: malformed/empty JSON makes jq exit non-zero; under set -e that would
+  # abort. A read-only reshaper must degrade with a marker, never abort the scan.
+  printf '%s' "$in" | "$jqbin" -r --argjson max "$_SEMGREP_TRACE_MAX" '
+    def firstloc: [.. | objects | select((.start?|type=="object") and (.start.line? != null))] | .[0];
+    def render($l): if $l then "\($l.path // "?"):\($l.start.line)" else "?:?" end;
+    (.results // [])[:$max][]
+    | .extra.dataflow_trace as $dft
+    | "=== FINDING \(.check_id) @ \(.path):\(.start.line) [\(.extra.severity // "?")] ===",
+      "  MSG: \(.extra.message // "")",
+      ( if $dft == null
+        then "  TRACE: (none — not taint-mode, or OSS engine emitted no trace)"
+        else
+          "  SOURCE: \($dft.taint_source | firstloc | render(.))",
+          ( ($dft.intermediate_vars // [])[] | "    ~> \(.content // "?") @ \(.location | render(.))" ),
+          "  SINK:   \($dft.taint_sink | firstloc | render(.))"
+        end )
+  ' 2>/dev/null || echo "(semgrep-trace: JSON unparseable — INCONCLUSIVE)"
+  return 0
+}
+
 main() {
   sub="${1:-}"; [ $# -gt 0 ] && shift || true
   case "$sub" in
@@ -919,13 +958,14 @@ main() {
     profiles)  cmd_profiles "$@" ;;
     patterns)  cmd_patterns "$@" ;;
     manifest)  cmd_manifest "$@" ;;
+    semgrep-trace) cmd_semgrep_trace "$@" ;;
     supply-chain-config) cmd_supply_chain_config "$@" ;;
     __fmget)   fm_get "$@" ;;
     __fmfield) fm_field "$@" ;;
     __evalblock) extract_eval_block ;;
     __evalgate)   eval_gate "$@" ;;
     __evalupdate) eval_update_baseline "$@" ;;
-    *) echo "usage: detect.sh {preflight|eval|eval-categories|eval-run|eval-gaps|codex-verify|stacks|tool|scope|triage|manifest|supply-chain-config|issues|issues-create|issues-ensure-label|labels|profiles|patterns} ..." >&2; return 2 ;;
+    *) echo "usage: detect.sh {preflight|eval|eval-categories|eval-run|eval-gaps|codex-verify|stacks|tool|scope|triage|manifest|semgrep-trace|supply-chain-config|issues|issues-create|issues-ensure-label|labels|profiles|patterns} ..." >&2; return 2 ;;
   esac
 }
 
