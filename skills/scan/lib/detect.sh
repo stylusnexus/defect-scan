@@ -569,7 +569,8 @@ eval_update_baseline() {
 #     `timeout`/`gtimeout` binary exists (stock macOS has neither — degrade, don't fail).
 _eval_run_one() {
   _r="$1"; _src="$2"; _lang="$3"; _prof="$4"; _of="$5"
-  _tries=$(( ${DEFECT_SCAN_EVAL_RETRIES:-2} + 1 ))
+  # Guard the operator knob: a non-numeric value would abort the arithmetic under set -u.
+  case "${DEFECT_SCAN_EVAL_RETRIES:-2}" in (*[!0-9]*) _tries=3 ;; (*) _tries=$(( ${DEFECT_SCAN_EVAL_RETRIES:-2} + 1 )) ;; esac
   _bo="${DEFECT_SCAN_EVAL_BACKOFF:-5}"
   _tobin=""
   [ -n "${DEFECT_SCAN_EVAL_TIMEOUT:-}" ] && _tobin="$(command -v timeout 2>/dev/null || command -v gtimeout 2>/dev/null || true)"
@@ -585,7 +586,12 @@ _eval_run_one() {
     # (runner error) can't yield a valid block, so it falls through to a retry.
     if [ -n "$_out" ]; then
       if _blk="$(printf '%s' "$_out" | extract_eval_block)"; then
-        printf '%s' "$_blk" > "$_of"; return 0
+        printf '%s' "$_blk" > "$_of"
+        # Only count a RECOVERY if this success came after ≥1 retry — the recovery note
+        # must never print on a sequence that ultimately fails (that would contradict the
+        # PARTIAL line). _eval_retries counts attempts spent; _eval_recovered counts wins.
+        [ "$_a" -gt 1 ] && _eval_recovered=$((_eval_recovered+1))
+        return 0
       fi
     fi
     _a=$((_a+1))
@@ -626,7 +632,7 @@ cmd_eval_run() {
       [ "$split" = all ] && { echo "eval-run: $lang/$sp absent — skipping"; continue; }
       echo "eval-run: corpus split not found: $dir" >&2; return 2
     fi
-    pvals=""; rvals=""; clean_fp_runs=0; partial=0; _eval_retries=0
+    pvals=""; rvals=""; clean_fp_runs=0; partial=0; _eval_retries=0; _eval_recovered=0
     last_findings=""
     r=1
     while [ "$r" -le "$runs" ]; do
@@ -676,7 +682,7 @@ cmd_eval_run() {
     } > "$art"
 
     echo "eval-run $lang/$sp: runs=$runs mean_precision=$mp(±$sp_p) mean_recall=$mr(±$sp_r) clean_fp_runs=$clean_fp_runs retries=$_eval_retries"
-    [ "$_eval_retries" -gt 0 ] && echo "eval-run $lang/$sp: $_eval_retries fixture-run retr$([ "$_eval_retries" = 1 ] && echo y || echo ies) recovered after a missing/invalid block (#104)"
+    [ "$_eval_recovered" -gt 0 ] && echo "eval-run $lang/$sp: $_eval_recovered fixture run(s) recovered via retry after a missing/invalid block ($_eval_retries attempt(s) spent) (#104)"
     [ "$partial" = 1 ] && echo "eval-run $lang/$sp: PARTIAL — a fixture run stayed inconclusive (missing/invalid block) after exhausting retries"
 
     if [ "$update" = 1 ]; then

@@ -389,9 +389,9 @@ _mk_baseline() {  # $1=path $2=pfloor $3=rfloor $4=pbase $5=rbase $6=noise
   DEFECT_SCAN_STUB_MODE=flaky DEFECT_SCAN_STUB_FLAKY_COUNTER="$cnt" DEFECT_SCAN_STUB_FLAKY_FAILS=1 \
   DEFECT_SCAN_EVAL_RETRIES=2 \
     run "$DETECT" eval-run foo --runs 1
-  [[ "$output" != *"PARTIAL"* ]]                                   # recovered, never inconclusive
-  [[ "$output" == *"retries="* ]]                                  # stability surfaced in the summary
-  [[ "$output" == *"recovered after a missing/invalid block"* ]]   # #104 retry message
+  [[ "$output" != *"PARTIAL"* ]]                       # recovered, never inconclusive
+  [[ "$output" == *"retries="* ]]                      # stability surfaced in the summary
+  [[ "$output" == *"recovered via retry"* ]]           # #104 recovery message (only on real recovery)
 }
 
 @test "eval-run: retries reported; exhaustion still fails as PARTIAL (#104)" {
@@ -404,6 +404,7 @@ _mk_baseline() {  # $1=path $2=pfloor $3=rfloor $4=pbase $5=rbase $6=noise
   [[ "$output" == *"retries="* ]]
   [[ "$output" == *"PARTIAL"* ]]
   [[ "$output" == *"exhausting retries"* ]]
+  [[ "$output" != *"recovered"* ]]   # must NOT claim recovery on an exhausted run (honest log)
 }
 
 @test "eval_gate: PASS when precision >= floor and recall ok" {
