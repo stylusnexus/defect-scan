@@ -1106,13 +1106,14 @@ main() {
     patterns)  cmd_patterns "$@" ;;
     manifest)  cmd_manifest "$@" ;;
     semgrep-trace) cmd_semgrep_trace "$@" ;;
+    semgrep-pro-status) cmd_semgrep_pro_status "$@" ;;
     supply-chain-config) cmd_supply_chain_config "$@" ;;
     __fmget)   fm_get "$@" ;;
     __fmfield) fm_field "$@" ;;
     __evalblock) extract_eval_block ;;
     __evalgate)   eval_gate "$@" ;;
     __evalupdate) eval_update_baseline "$@" ;;
-    *) echo "usage: detect.sh {preflight|eval|eval-categories|eval-legend|eval-run|eval-gaps|codex-verify|stacks|tool|scope|triage|manifest|semgrep-trace|supply-chain-config|issues|issues-create|issues-ensure-label|labels|profiles|patterns} ..." >&2; return 2 ;;
+    *) echo "usage: detect.sh {preflight|eval|eval-categories|eval-legend|eval-run|eval-gaps|codex-verify|stacks|tool|scope|triage|manifest|semgrep-trace|semgrep-pro-status|supply-chain-config|issues|issues-create|issues-ensure-label|labels|profiles|patterns} ..." >&2; return 2 ;;
   esac
 }
 

@@ -1748,6 +1748,40 @@ JSON
   [[ "$output" == *"semgrep-trace"* ]]
 }
 
+@test "detect.sh usage lists the semgrep-pro-status subcommand (#110)" {
+  run "$DETECT" bogus
+  [[ "$output" == *"semgrep-pro-status"* ]]
+}
+
+@test "semgrep-pro-status: prints a status line and exits 0 (#110)" {
+  run "$DETECT" semgrep-pro-status
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"available"* ]]   # matches both "available" and "unavailable: ..."
+}
+
+@test "semgrep-pro-status: reports unavailable with a hint when semgrep is absent (#110)" {
+  empty="$BATS_TEST_TMPDIR/nobin"; mkdir -p "$empty"
+  run env PATH="$empty" /bin/sh "$DETECT" semgrep-pro-status
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"unavailable"* ]]
+  [[ "$output" == *"not installed"* ]]
+}
+
+@test "semgrep-pro-status never invokes the Pro engine (no network auto-install) (#110)" {
+  # The detector must probe the core's PRESENCE, never run 'semgrep --pro' (which
+  # triggers a network auto-install). No EXECUTABLE such invocation in detect.sh —
+  # strip comment lines first (the helper's doc comment names the flag to warn against it).
+  ! grep -vE '^[[:space:]]*#' "$DETECT" | grep -qE 'semgrep[[:space:]]+(scan[[:space:]]+)?--pro'
+}
+
+@test "SKILL.md + codex driver document --semgrep-pro and never handling the token (#110)" {
+  s="$BATS_TEST_DIRNAME/../skills/scan/SKILL.md"
+  c="$BATS_TEST_DIRNAME/../codex/defect-scan.md"
+  grep -q -- "--semgrep-pro" "$s" && grep -q "semgrep-pro-status" "$s"
+  grep -qi "never handles the token\|never handle the token\|never handles your token" "$s"
+  grep -q -- "--semgrep-pro" "$c" && grep -q "semgrep-pro-status" "$c"
+}
+
 @test "semgrep-trace: renders source→sink path with intermediate vars" {
   fix="$BATS_TEST_DIRNAME/fixtures/semgrep/trace-sample.json"
   run bash -c "'$DETECT' semgrep-trace < '$fix'"

@@ -46,7 +46,12 @@ shell directly, capture JSON with `jq`, read files with your own tools.
    and pipe the JSON through `"$DETECT" semgrep-trace` to reshape each finding into a
    `SOURCE → ~> intermediates → SINK` block for the reasoning pass (taint-mode +
    Pro/login feature; OSS emits no trace and `semgrep-trace` prints an honest
-   `(none …)` — a graceful no-op).
+   `(none …)` — a graceful no-op). With `--semgrep-pro`, probe
+   `"$DETECT" semgrep-pro-status` (read-only, never auto-installs): if `available`, run
+   `semgrep --pro-intrafile --dataflow-traces --json` so traces populate (note Pro ran);
+   if `unavailable`, print the hint and fall back to the OSS invocation. defect-scan
+   never handles the semgrep token (user runs `semgrep login`); always report which
+   engine (OSS vs Pro) ran.
 4. **Reasoning pass** — read the in-scope files against each profile's checklist +
    `baseline-categories.md` + the pattern packs (including `patterns/supply-chain.md`
    P11–P14 for supply-chain / `cat#6` findings); run the **adversarial verification**
