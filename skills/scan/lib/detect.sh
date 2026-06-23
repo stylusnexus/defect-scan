@@ -556,6 +556,46 @@ eval_update_baseline() {
     "$pf" "$rf" "$mp" "$mr" "$nb" "$ob" > "$bf"
 }
 
+# _eval_run_one <runner> <src> <lang> <profile> <outfile>: scan ONE fixture, retrying on
+# a missing/invalid EVAL block or a runner error before giving up (#104 — under sustained
+# load a rate-limit/reset wait yields block-less output; one retry usually recovers a
+# clean block). Writes the validated block to <outfile> (possibly EMPTY = a legit
+# clean-fixture "no findings") and returns 0; returns 1 only when every attempt fails.
+# Bumps the global _eval_retries tally — so it must be called DIRECTLY (not in a command
+# substitution, which would run it in a subshell and lose the increment). Knobs:
+#   DEFECT_SCAN_EVAL_RETRIES (default 2) — extra attempts after the first.
+#   DEFECT_SCAN_EVAL_BACKOFF (default 5) — seconds between attempts (0 disables sleep).
+#   DEFECT_SCAN_EVAL_TIMEOUT (optional)  — per-attempt timeout secs, applied ONLY if a
+#     `timeout`/`gtimeout` binary exists (stock macOS has neither — degrade, don't fail).
+_eval_run_one() {
+  _r="$1"; _src="$2"; _lang="$3"; _prof="$4"; _of="$5"
+  _tries=$(( ${DEFECT_SCAN_EVAL_RETRIES:-2} + 1 ))
+  _bo="${DEFECT_SCAN_EVAL_BACKOFF:-5}"
+  _tobin=""
+  [ -n "${DEFECT_SCAN_EVAL_TIMEOUT:-}" ] && _tobin="$(command -v timeout 2>/dev/null || command -v gtimeout 2>/dev/null || true)"
+  _a=1
+  while [ "$_a" -le "$_tries" ]; do
+    if [ -n "$_tobin" ]; then
+      _out="$("$_tobin" "$DEFECT_SCAN_EVAL_TIMEOUT" "$_r" "$_src" "$_lang" "$_prof" 2>/dev/null)" || _out=""
+    else
+      _out="$("$_r" "$_src" "$_lang" "$_prof" 2>/dev/null)" || _out=""
+    fi
+    # extract_eval_block exits 0 (even for an EMPTY-but-present block = clean fixture) on
+    # a valid result, non-zero (4) on a missing/dup/malformed block. Empty output alone
+    # (runner error) can't yield a valid block, so it falls through to a retry.
+    if [ -n "$_out" ]; then
+      if _blk="$(printf '%s' "$_out" | extract_eval_block)"; then
+        printf '%s' "$_blk" > "$_of"; return 0
+      fi
+    fi
+    _a=$((_a+1))
+    [ "$_a" -le "$_tries" ] || break
+    _eval_retries=$((_eval_retries+1))
+    case "$_bo" in ''|0) : ;; *) sleep "$_bo" ;; esac
+  done
+  return 1
+}
+
 # eval-run <lang> [--runs N] [--split seen|held-out|all] [--update-baseline]
 # Model-FREE orchestrator. Per split: N runs, each run scans every SOURCE fixture via
 # the swappable $DEFECT_SCAN_EVAL_RUNNER (per-fixture), accumulates findings into one
@@ -586,7 +626,7 @@ cmd_eval_run() {
       [ "$split" = all ] && { echo "eval-run: $lang/$sp absent — skipping"; continue; }
       echo "eval-run: corpus split not found: $dir" >&2; return 2
     fi
-    pvals=""; rvals=""; clean_fp_runs=0; partial=0
+    pvals=""; rvals=""; clean_fp_runs=0; partial=0; _eval_retries=0
     last_findings=""
     r=1
     while [ "$r" -le "$runs" ]; do
@@ -596,8 +636,10 @@ cmd_eval_run() {
         [ -f "$src" ] || [ -d "$src" ] || continue
         # Scan profile (arg 3) = --as override, else the corpus lang. Labels still come
         # from $lang (in the runner); only the scan's --lang profile is overridable.
-        out="$("$runner" "$src" "$lang" "${as_profile:-$lang}" 2>/dev/null)" || { partial=1; continue; }
-        block="$(printf '%s' "$out" | extract_eval_block)" || { partial=1; continue; }
+        blkfile="$(mktemp 2>/dev/null || echo "/tmp/ds-blk-$$.$r")"
+        # Call DIRECTLY (not in $()) so _eval_run_one's _eval_retries increments survive.
+        _eval_run_one "$runner" "$src" "$lang" "${as_profile:-$lang}" "$blkfile" || { partial=1; rm -f "$blkfile"; continue; }
+        block="$(cat "$blkfile")"; rm -f "$blkfile"
         [ -n "$block" ] || continue
         if [ -d "$src" ]; then
           # Directory fixture: the runner emits paths relative to the case root; the
@@ -633,8 +675,9 @@ cmd_eval_run() {
       printf '@findings\n%s\n' "$last_findings"
     } > "$art"
 
-    echo "eval-run $lang/$sp: runs=$runs mean_precision=$mp(±$sp_p) mean_recall=$mr(±$sp_r) clean_fp_runs=$clean_fp_runs"
-    [ "$partial" = 1 ] && echo "eval-run $lang/$sp: PARTIAL — at least one fixture run was inconclusive (missing/invalid block)"
+    echo "eval-run $lang/$sp: runs=$runs mean_precision=$mp(±$sp_p) mean_recall=$mr(±$sp_r) clean_fp_runs=$clean_fp_runs retries=$_eval_retries"
+    [ "$_eval_retries" -gt 0 ] && echo "eval-run $lang/$sp: $_eval_retries fixture-run retr$([ "$_eval_retries" = 1 ] && echo y || echo ies) recovered after a missing/invalid block (#104)"
+    [ "$partial" = 1 ] && echo "eval-run $lang/$sp: PARTIAL — a fixture run stayed inconclusive (missing/invalid block) after exhausting retries"
 
     if [ "$update" = 1 ]; then
       if [ "$partial" = 1 ]; then

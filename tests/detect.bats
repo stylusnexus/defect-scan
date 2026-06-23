@@ -2,6 +2,7 @@
 
 setup() {
   DETECT="$BATS_TEST_DIRNAME/../skills/scan/lib/detect.sh"
+  export DEFECT_SCAN_EVAL_BACKOFF=0   # #104: no real sleeps between eval-run retries in tests
 }
 
 @test "detect.sh prints usage and exits 2 on unknown subcommand" {
@@ -378,6 +379,31 @@ _mk_baseline() {  # $1=path $2=pfloor $3=rfloor $4=pbase $5=rbase $6=noise
     run "$DETECT" eval-run foo --runs 1 --update-baseline
   [ "$status" -ne 0 ]
   [ ! -f "$c/foo/baseline.seen.txt" ]      # nothing written from a broken run
+}
+
+@test "eval-run: a flaky fixture run recovers via retry, not PARTIAL (#104)" {
+  c="$BATS_TEST_TMPDIR/c"; _mk_eval_corpus "$c" foo
+  cnt="$BATS_TEST_TMPDIR/flakycount"
+  DEFECT_SCAN_EVAL_CORPUS="$c" \
+  DEFECT_SCAN_EVAL_RUNNER="$BATS_TEST_DIRNAME/fixtures/eval-runner-stub" \
+  DEFECT_SCAN_STUB_MODE=flaky DEFECT_SCAN_STUB_FLAKY_COUNTER="$cnt" DEFECT_SCAN_STUB_FLAKY_FAILS=1 \
+  DEFECT_SCAN_EVAL_RETRIES=2 \
+    run "$DETECT" eval-run foo --runs 1
+  [[ "$output" != *"PARTIAL"* ]]                                   # recovered, never inconclusive
+  [[ "$output" == *"retries="* ]]                                  # stability surfaced in the summary
+  [[ "$output" == *"recovered after a missing/invalid block"* ]]   # #104 retry message
+}
+
+@test "eval-run: retries reported; exhaustion still fails as PARTIAL (#104)" {
+  c="$BATS_TEST_TMPDIR/c"; _mk_eval_corpus "$c" foo
+  DEFECT_SCAN_EVAL_CORPUS="$c" \
+  DEFECT_SCAN_EVAL_RUNNER="$BATS_TEST_DIRNAME/fixtures/eval-runner-stub" \
+  DEFECT_SCAN_STUB_MODE=missing DEFECT_SCAN_EVAL_RETRIES=2 \
+    run "$DETECT" eval-run foo --runs 1
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"retries="* ]]
+  [[ "$output" == *"PARTIAL"* ]]
+  [[ "$output" == *"exhausting retries"* ]]
 }
 
 @test "eval_gate: PASS when precision >= floor and recall ok" {
