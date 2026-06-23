@@ -119,9 +119,10 @@ via `lib/detect.sh tool <name>` and skip-with-hint if absent:
   **Pro engine (`--semgrep-pro`).** OSS semgrep emits no dataflow trace. When the user
   passes `--semgrep-pro`, first probe `lib/detect.sh semgrep-pro-status` (read-only,
   never auto-installs):
-  - `available` → run `semgrep --pro-intrafile --dataflow-traces --json <paths>` so the
-    trace actually populates (real path-sensitive traces → richer Stage 3); note in the
-    report header that the **Pro** engine ran.
+  - `available` → run `semgrep --config auto --pro-intrafile --dataflow-traces --json
+    <paths>` (keep `--config auto` — `--pro-intrafile` selects the *engine*, not a
+    ruleset) so the trace actually populates (real path-sensitive traces → richer
+    Stage 3); note in the report header that the **Pro** engine ran.
   - `unavailable: …` → print the hint and **fall back to the OSS invocation above**; the
     scan continues (Pro is an enhancement, never a hard dependency).
   defect-scan never handles the semgrep token — the user authenticates once with

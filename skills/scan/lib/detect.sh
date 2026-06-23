@@ -99,16 +99,23 @@ cmd_semgrep_pro_status() {
   [ -n "$sg" ] || { echo "unavailable: semgrep not installed (brew install semgrep / pipx install semgrep)"; return 0; }
   # Pro core directly on PATH.
   if command -v semgrep-core-proprietary >/dev/null 2>&1; then echo "available"; return 0; fi
-  # Resolve a one-hop symlink, then check the known install-relative locations directly
-  # (bounded globs — far cheaper than a broad `find`, and an unmatched glob stays literal
-  # under POSIX sh so `[ -f ]` just fails). semgrep looks for the core "in PATH or in the
-  # semgrep package", so the package bin dir is the place to look.
-  real="$(readlink "$sg" 2>/dev/null || true)"
-  case "$real" in /*) sg="$real" ;; ?*) sg="$(dirname "$sg")/$real" ;; esac
+  # FULLY resolve the symlink chain (bounded) — macOS has no `readlink -f`, and Homebrew
+  # chains `bin → Cellar/<ver>/bin → libexec/bin`, with the Pro core under libexec/lib/...
+  # A single hop lands on the wrong dir and misses it. Then check known install-relative
+  # locations directly (bounded globs — cheaper than a broad `find`; an unmatched glob
+  # stays literal under POSIX sh so `[ -f ]` just fails). semgrep looks for the core "in
+  # PATH or in the semgrep package", so the package bin dir is where it lives.
+  _hops=0
+  while [ -L "$sg" ] && [ "$_hops" -lt 8 ]; do
+    _t="$(readlink "$sg" 2>/dev/null || true)"; [ -n "$_t" ] || break
+    case "$_t" in /*) sg="$_t" ;; *) sg="$(dirname "$sg")/$_t" ;; esac
+    _hops=$((_hops+1))
+  done
   d="$(dirname "$sg")"
   for cand in \
     "$d/semgrep-core-proprietary" \
     "$d"/../lib/python*/site-packages/semgrep/bin/semgrep-core-proprietary \
+    "$d"/../libexec/lib/python*/site-packages/semgrep/bin/semgrep-core-proprietary \
     "$HOME"/.local/pipx/venvs/semgrep/lib/python*/site-packages/semgrep/bin/semgrep-core-proprietary
   do
     [ -f "$cand" ] && { echo "available"; return 0; }

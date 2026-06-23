@@ -1774,6 +1774,23 @@ JSON
   ! grep -vE '^[[:space:]]*#' "$DETECT" | grep -qE 'semgrep[[:space:]]+(scan[[:space:]]+)?--pro'
 }
 
+@test "semgrep-pro-status: detects Pro through a Homebrew-style two-hop symlink chain (#110)" {
+  # Homebrew: bin/semgrep -> Cellar/<ver>/bin/semgrep -> libexec/bin/semgrep, with the
+  # Pro core under libexec/lib/python*/site-packages/semgrep/bin/. One-hop resolution
+  # missed it; the bounded chain walk must find it.
+  root="$BATS_TEST_TMPDIR/brew"; ver="$root/Cellar/semgrep/1.0.0"
+  mkdir -p "$root/bin" "$ver/bin" "$ver/libexec/bin" "$ver/libexec/lib/python3.14/site-packages/semgrep/bin"
+  printf '#!/bin/sh\necho semgrep\n' > "$ver/libexec/bin/semgrep"; chmod +x "$ver/libexec/bin/semgrep"
+  ln -s "../libexec/bin/semgrep" "$ver/bin/semgrep"
+  ln -s "../Cellar/semgrep/1.0.0/bin/semgrep" "$root/bin/semgrep"
+  : > "$ver/libexec/lib/python3.14/site-packages/semgrep/bin/semgrep-core-proprietary"
+  # Prepend the fake bin so our semgrep wins command -v, but keep the real PATH so the
+  # script's own utils (dirname/readlink/grep) still resolve.
+  run env PATH="$root/bin:$PATH" /bin/sh "$DETECT" semgrep-pro-status
+  [ "$status" -eq 0 ]
+  [[ "$output" == "available" ]]
+}
+
 @test "SKILL.md + codex driver document --semgrep-pro and never handling the token (#110)" {
   s="$BATS_TEST_DIRNAME/../skills/scan/SKILL.md"
   c="$BATS_TEST_DIRNAME/../codex/defect-scan.md"

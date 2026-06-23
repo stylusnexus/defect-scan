@@ -48,8 +48,9 @@ shell directly, capture JSON with `jq`, read files with your own tools.
    Pro/login feature; OSS emits no trace and `semgrep-trace` prints an honest
    `(none …)` — a graceful no-op). With `--semgrep-pro`, probe
    `"$DETECT" semgrep-pro-status` (read-only, never auto-installs): if `available`, run
-   `semgrep --pro-intrafile --dataflow-traces --json` so traces populate (note Pro ran);
-   if `unavailable`, print the hint and fall back to the OSS invocation. defect-scan
+   `semgrep --config auto --pro-intrafile --dataflow-traces --json` (keep `--config auto`
+   — `--pro-intrafile` selects the engine, not a ruleset) so traces populate (note Pro
+   ran); if `unavailable`, print the hint and fall back to the OSS invocation. defect-scan
    never handles the semgrep token (user runs `semgrep login`); always report which
    engine (OSS vs Pro) ran.
 4. **Reasoning pass** — read the in-scope files against each profile's checklist +
