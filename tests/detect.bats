@@ -772,6 +772,24 @@ EOF
   grep -q "patterns/recurring.md" "$BATS_TEST_DIRNAME/../skills/scan/SKILL.md"
 }
 
+@test "SKILL.md verifies security-class tool findings (no blanket auto-High)" {
+  f="$BATS_TEST_DIRNAME/../skills/scan/SKILL.md"
+  grep -qi "security-class" "$f"
+  grep -qi "FP-filter" "$f"
+  grep -qi "downgrade to Medium" "$f"
+  grep -qi "never drop\|not.*drop" "$f"   # recall guarantee: downgrade-only, never drop
+  # the old unconditional invariant must be gone
+  ! grep -q "Tool-confirmed findings are \*\*High\*\* by definition" "$f"
+}
+
+@test "codex driver mirrors security-class tool-finding verification (incl. never-drop)" {
+  f="$BATS_TEST_DIRNAME/../codex/defect-scan.md"
+  grep -qi "security-class" "$f"
+  grep -qi "FP-filter" "$f"
+  grep -qi "downgrade to Medium" "$f"
+  grep -qi "never drop" "$f"               # lock the recall guarantee in both drivers
+}
+
 @test "issues: requires at least one keyword" {
   run "$DETECT" issues
   [ "$status" -eq 2 ]
