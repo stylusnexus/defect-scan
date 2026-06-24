@@ -2,6 +2,7 @@
 
 setup() {
   DETECT="$BATS_TEST_DIRNAME/../skills/scan/lib/detect.sh"
+  export DEFECT_SCAN_EVAL_BACKOFF=0   # #104: no real sleeps between eval-run retries in tests
 }
 
 @test "detect.sh prints usage and exits 2 on unknown subcommand" {
@@ -261,6 +262,82 @@ _mk_grader_corpus() {  # $1=dir : one buggy fixture (line 4, cat#2) + one clean
   [[ "$output" == *"widget"* ]] && [[ "$output" == *"cat#3"* ]]
 }
 
+@test "usage lists the eval-legend subcommand" {
+  run "$DETECT" bogus
+  [[ "$output" == *"eval-legend"* ]]
+}
+
+@test "eval-legend: injects cat# BODIES, not just titles (#105)" {
+  run "$DETECT" eval-legend rust
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"cat#1 = Null"* ]]                 # title
+  [[ "$output" == *"dereferences"* ]]                 # body word — absent from the old title-only legend
+  [[ "$output" == *"cat#6 = Supply-chain"* ]]
+}
+
+@test "eval-legend: rust panic label is defined and disambiguated from cat#1 (#105)" {
+  run "$DETECT" eval-legend rust
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"panic = "* ]]
+  # the exact gap that caused the 0.67/0.67 drift: indexing belongs to cat#1, not panic
+  [[ "$output" == *"NOT panic-prone indexing"* ]]
+}
+
+@test "eval-legend: shell quoting and yaml coerce labels are defined (#105)" {
+  run "$DETECT" eval-legend shell
+  [[ "$output" == *"quoting = "* ]]
+  run "$DETECT" eval-legend yaml
+  [[ "$output" == *"coerce = "* ]]
+}
+
+@test "eval-legend: a language with no custom labels emits only cat# defs (#105)" {
+  run "$DETECT" eval-legend csharp
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"cat#3 = Injection"* ]]
+  [[ "$output" != *" = "*"panic"* ]]   # no stray language-specific label
+}
+
+@test "eval-legend: a profile cat#N scope extension merges into the baseline cat# (#109)" {
+  run "$DETECT" eval-legend react-typescript
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"cat#5 = Concurrency hazards:"* ]]   # baseline body still present
+  [[ "$output" == *"lang-specific:"* ]]                 # extension marker
+  [[ "$output" == *"index-as-key"* ]]                   # the React specialization the eval model missed
+  # the extension rides ON cat#5, not emitted as a stray second cat#5 entry
+  [ "$(printf '%s' "$output" | tr ';' '\n' | grep -c 'cat#5 = ')" -eq 1 ]
+}
+
+@test "react-typescript profile declares a cat#5 scope extension in ## Eval labels (#109)" {
+  f="$BATS_TEST_DIRNAME/../skills/scan/profiles/react-typescript.md"
+  grep -qE '^## Eval labels' "$f"
+  grep -qE '^cat#5:' "$f"
+}
+
+@test "eval-legend: works from a skill path containing spaces (#109 regression guard)" {
+  # An unquoted profile-arg substitution word-split a spaced install path → empty legend.
+  spaced="$BATS_TEST_TMPDIR/space dir/skills"
+  mkdir -p "$spaced"
+  cp -R "$BATS_TEST_DIRNAME/../skills/scan" "$spaced/scan"
+  run "$spaced/scan/lib/detect.sh" eval-legend react-typescript
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"cat#1 = Null"* ]]      # baseline cat# legend present (was empty pre-fix)
+  [[ "$output" == *"index-as-key"* ]]      # the cat#5 profile extension still merges
+}
+
+@test "rust/shell/yaml profiles declare an ## Eval labels section (#105 source)" {
+  for p in rust shell yaml; do
+    grep -qE '^## Eval labels' "$BATS_TEST_DIRNAME/../skills/scan/profiles/$p.md"
+  done
+}
+
+@test "both runners build the legend via detect.sh eval-legend, not a title-only awk (#105)" {
+  for rn in claude codex; do
+    f="$BATS_TEST_DIRNAME/../tests/eval/runners/$rn.sh"
+    grep -q 'eval-legend' "$f"
+    ! grep -q 'cat#%s = %s; ' "$f"   # the old title-only awk must be gone
+  done
+}
+
 _mk_eval_corpus() {  # $1 = root, $2 = lang
   mkdir -p "$1/$2/seen"
   printf 'x\n' > "$1/$2/seen/bug_one.ext"
@@ -329,6 +406,32 @@ _mk_baseline() {  # $1=path $2=pfloor $3=rfloor $4=pbase $5=rbase $6=noise
     run "$DETECT" eval-run foo --runs 1 --update-baseline
   [ "$status" -ne 0 ]
   [ ! -f "$c/foo/baseline.seen.txt" ]      # nothing written from a broken run
+}
+
+@test "eval-run: a flaky fixture run recovers via retry, not PARTIAL (#104)" {
+  c="$BATS_TEST_TMPDIR/c"; _mk_eval_corpus "$c" foo
+  cnt="$BATS_TEST_TMPDIR/flakycount"
+  DEFECT_SCAN_EVAL_CORPUS="$c" \
+  DEFECT_SCAN_EVAL_RUNNER="$BATS_TEST_DIRNAME/fixtures/eval-runner-stub" \
+  DEFECT_SCAN_STUB_MODE=flaky DEFECT_SCAN_STUB_FLAKY_COUNTER="$cnt" DEFECT_SCAN_STUB_FLAKY_FAILS=1 \
+  DEFECT_SCAN_EVAL_RETRIES=2 \
+    run "$DETECT" eval-run foo --runs 1
+  [[ "$output" != *"PARTIAL"* ]]                       # recovered, never inconclusive
+  [[ "$output" == *"retries="* ]]                      # stability surfaced in the summary
+  [[ "$output" == *"recovered via retry"* ]]           # #104 recovery message (only on real recovery)
+}
+
+@test "eval-run: retries reported; exhaustion still fails as PARTIAL (#104)" {
+  c="$BATS_TEST_TMPDIR/c"; _mk_eval_corpus "$c" foo
+  DEFECT_SCAN_EVAL_CORPUS="$c" \
+  DEFECT_SCAN_EVAL_RUNNER="$BATS_TEST_DIRNAME/fixtures/eval-runner-stub" \
+  DEFECT_SCAN_STUB_MODE=missing DEFECT_SCAN_EVAL_RETRIES=2 \
+    run "$DETECT" eval-run foo --runs 1
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"retries="* ]]
+  [[ "$output" == *"PARTIAL"* ]]
+  [[ "$output" == *"exhausting retries"* ]]
+  [[ "$output" != *"recovered"* ]]   # must NOT claim recovery on an exhausted run (honest log)
 }
 
 @test "eval_gate: PASS when precision >= floor and recall ok" {
@@ -1643,6 +1746,57 @@ JSON
 @test "detect.sh usage lists the semgrep-trace subcommand" {
   run "$DETECT" bogus
   [[ "$output" == *"semgrep-trace"* ]]
+}
+
+@test "detect.sh usage lists the semgrep-pro-status subcommand (#110)" {
+  run "$DETECT" bogus
+  [[ "$output" == *"semgrep-pro-status"* ]]
+}
+
+@test "semgrep-pro-status: prints a status line and exits 0 (#110)" {
+  run "$DETECT" semgrep-pro-status
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"available"* ]]   # matches both "available" and "unavailable: ..."
+}
+
+@test "semgrep-pro-status: reports unavailable with a hint when semgrep is absent (#110)" {
+  empty="$BATS_TEST_TMPDIR/nobin"; mkdir -p "$empty"
+  run env PATH="$empty" /bin/sh "$DETECT" semgrep-pro-status
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"unavailable"* ]]
+  [[ "$output" == *"not installed"* ]]
+}
+
+@test "semgrep-pro-status never invokes the Pro engine (no network auto-install) (#110)" {
+  # The detector must probe the core's PRESENCE, never run 'semgrep --pro' (which
+  # triggers a network auto-install). No EXECUTABLE such invocation in detect.sh —
+  # strip comment lines first (the helper's doc comment names the flag to warn against it).
+  ! grep -vE '^[[:space:]]*#' "$DETECT" | grep -qE 'semgrep[[:space:]]+(scan[[:space:]]+)?--pro'
+}
+
+@test "semgrep-pro-status: detects Pro through a Homebrew-style two-hop symlink chain (#110)" {
+  # Homebrew: bin/semgrep -> Cellar/<ver>/bin/semgrep -> libexec/bin/semgrep, with the
+  # Pro core under libexec/lib/python*/site-packages/semgrep/bin/. One-hop resolution
+  # missed it; the bounded chain walk must find it.
+  root="$BATS_TEST_TMPDIR/brew"; ver="$root/Cellar/semgrep/1.0.0"
+  mkdir -p "$root/bin" "$ver/bin" "$ver/libexec/bin" "$ver/libexec/lib/python3.14/site-packages/semgrep/bin"
+  printf '#!/bin/sh\necho semgrep\n' > "$ver/libexec/bin/semgrep"; chmod +x "$ver/libexec/bin/semgrep"
+  ln -s "../libexec/bin/semgrep" "$ver/bin/semgrep"
+  ln -s "../Cellar/semgrep/1.0.0/bin/semgrep" "$root/bin/semgrep"
+  : > "$ver/libexec/lib/python3.14/site-packages/semgrep/bin/semgrep-core-proprietary"
+  # Prepend the fake bin so our semgrep wins command -v, but keep the real PATH so the
+  # script's own utils (dirname/readlink/grep) still resolve.
+  run env PATH="$root/bin:$PATH" /bin/sh "$DETECT" semgrep-pro-status
+  [ "$status" -eq 0 ]
+  [[ "$output" == "available" ]]
+}
+
+@test "SKILL.md + codex driver document --semgrep-pro and never handling the token (#110)" {
+  s="$BATS_TEST_DIRNAME/../skills/scan/SKILL.md"
+  c="$BATS_TEST_DIRNAME/../codex/defect-scan.md"
+  grep -q -- "--semgrep-pro" "$s" && grep -q "semgrep-pro-status" "$s"
+  grep -qi "never handles the token\|never handle the token\|never handles your token" "$s"
+  grep -q -- "--semgrep-pro" "$c" && grep -q "semgrep-pro-status" "$c"
 }
 
 @test "semgrep-trace: renders source→sink path with intermediate vars" {

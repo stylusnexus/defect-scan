@@ -50,6 +50,14 @@ case "$mode" in
     # eval-run prepends the <case>/ prefix. A file fixture finds nothing here.
     if [ -d "$fixture" ]; then printf '<<<EVAL\n%s\nEVAL>>>\n' "$finding"
     else printf '<<<EVAL\nEVAL>>>\n'; fi ;;
+  flaky)
+    # #104: emit NO block for the first DEFECT_SCAN_STUB_FLAKY_FAILS attempts (tracked in
+    # a counter file), then a correct block — simulates a rate-limit/reset wave that a
+    # retry recovers from. Requires DEFECT_SCAN_STUB_FLAKY_COUNTER (a writable path).
+    _cf="${DEFECT_SCAN_STUB_FLAKY_COUNTER:?flaky mode needs DEFECT_SCAN_STUB_FLAKY_COUNTER}"
+    _n=0; [ -f "$_cf" ] && _n="$(cat "$_cf")"; _n=$((_n+1)); printf '%s' "$_n" > "$_cf"
+    if [ "$_n" -le "${DEFECT_SCAN_STUB_FLAKY_FAILS:-1}" ]; then :   # drop the block this attempt
+    else printf '<<<EVAL\n%s:%s\nEVAL>>>\n' "$base" "$finding"; fi ;;
   missing)   : ;;                          # no block at all
   dup)       printf '<<<EVAL\n%s:%s\nEVAL>>>\n<<<EVAL\nEVAL>>>\n' "$base" "$finding" ;;
   malformed) printf '<<<EVAL\nnot-a-valid-line\nEVAL>>>\n' ;;

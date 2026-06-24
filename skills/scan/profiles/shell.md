@@ -57,3 +57,6 @@ findings as **report-only** — the right fix for an unquoted variable, an ignor
 code, or an `eval` is a human decision (quoting can change intended word-splitting; the
 fix for `rm -rf "$VAR/"` is a guard, not a rewrite). No security/quoting finding is
 auto-fixed.
+
+## Eval labels
+quoting: unquoted `$var` / `$(...)` / `$@` in a command or test → word-splitting & glob expansion on spaces/newlines/metachars (SC2086/SC2046/SC2068); use `"$var"`/`"$@"`. NOT ignored exit codes (cat#2) or eval/command injection (cat#3).

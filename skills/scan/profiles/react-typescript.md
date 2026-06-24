@@ -105,3 +105,6 @@ Only `eslint`-confirmed rules invoked with `--fix` AND in the safe set:
   and `no-misused-promises` (inserting `await` vs `void` changes semantics);
   `switch-exhaustiveness-check`, `ban-ts-comment`, `no-array-index-key` (needs a real
   stable key). `tsc` findings are never auto-fixed.
+
+## Eval labels
+cat#5: in React this also covers render/state-IDENTITY hazards (not only data-race concurrency) — index-as-key `key={index}` (corrupts state/DOM identity on reorder/insert), stale closures over state, in-place mutation of props/state, conditional hook calls.

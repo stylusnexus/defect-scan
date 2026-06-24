@@ -83,6 +83,46 @@ cmd_tool() {
   fi
   return 1
 }
+
+# semgrep-pro-status [cwd]: report whether the Semgrep Pro engine is locally available —
+# the proprietary core that powers `--pro`/`--pro-intrafile` (cross-file taint + POPULATED
+# dataflow traces; the OSS engine emits neither). Prints exactly one line:
+#   available
+#   unavailable: <reason + hint>
+# READ-ONLY and NON-INSTALLING — it must NEVER run `semgrep --pro`, which triggers a
+# network auto-install of the core (so detection probes the core's PRESENCE, not by
+# invoking it). Exit 0 always (a status probe, not a gate). defect-scan never handles the
+# semgrep token: the user runs `semgrep login` + `semgrep install-semgrep-pro` and semgrep
+# stores its own credentials in ~/.semgrep — we only consume that, we don't manage it (#110).
+cmd_semgrep_pro_status() {
+  sg="$(command -v semgrep 2>/dev/null || true)"
+  [ -n "$sg" ] || { echo "unavailable: semgrep not installed (brew install semgrep / pipx install semgrep)"; return 0; }
+  # Pro core directly on PATH.
+  if command -v semgrep-core-proprietary >/dev/null 2>&1; then echo "available"; return 0; fi
+  # FULLY resolve the symlink chain (bounded) — macOS has no `readlink -f`, and Homebrew
+  # chains `bin → Cellar/<ver>/bin → libexec/bin`, with the Pro core under libexec/lib/...
+  # A single hop lands on the wrong dir and misses it. Then check known install-relative
+  # locations directly (bounded globs — cheaper than a broad `find`; an unmatched glob
+  # stays literal under POSIX sh so `[ -f ]` just fails). semgrep looks for the core "in
+  # PATH or in the semgrep package", so the package bin dir is where it lives.
+  _hops=0
+  while [ -L "$sg" ] && [ "$_hops" -lt 8 ]; do
+    _t="$(readlink "$sg" 2>/dev/null || true)"; [ -n "$_t" ] || break
+    case "$_t" in /*) sg="$_t" ;; *) sg="$(dirname "$sg")/$_t" ;; esac
+    _hops=$((_hops+1))
+  done
+  d="$(dirname "$sg")"
+  for cand in \
+    "$d/semgrep-core-proprietary" \
+    "$d"/../lib/python*/site-packages/semgrep/bin/semgrep-core-proprietary \
+    "$d"/../libexec/lib/python*/site-packages/semgrep/bin/semgrep-core-proprietary \
+    "$HOME"/.local/pipx/venvs/semgrep/lib/python*/site-packages/semgrep/bin/semgrep-core-proprietary
+  do
+    [ -f "$cand" ] && { echo "available"; return 0; }
+  done
+  echo "unavailable: Pro engine not installed — run 'semgrep login && semgrep install-semgrep-pro' (defect-scan never handles your token)"
+  return 0
+}
 cmd_scope() {
   target=""; full=""; cwd=""
   # Collect positional (non-flag, non-empty) args in order.
@@ -451,6 +491,70 @@ cmd_eval_categories() {
   } | sort -u
 }
 
+# eval-legend <lang>: build the category-definition legend the eval runners inject into
+# the headless prompt. Centralized here (was duplicated, title-only, in BOTH runners —
+# a divergence + correctness bug, #105) so it has ONE definition and the model gets the
+# full scope, not just the title. Emits a single "; "-separated string:
+#   cat#N = <title>: <body> [ (lang-specific: <ext>) ]   (body from baseline-categories.md;
+#                          <ext> = a profile's language SPECIALIZATION of that baseline cat)
+#   <label> = <def>          (language-specific NON-cat# labels, e.g. rust panic)
+# The body/def/ext carry scope the eval model needs but cannot read (it's told not to open
+# skill files): e.g. rust panic-prone indexing is cat#1 (#105), and a React `key={index}`
+# is the react-typescript specialization of cat#5 (#109) — neither is in the bare baseline
+# definition. A profile contributes both via its "## Eval labels" section: a `cat#N: …`
+# line EXTENDS baseline cat#N's scope; a `<label>: …` line defines a new non-cat# label.
+cmd_eval_legend() {
+  lang="${1:?usage: detect.sh eval-legend <lang>}"
+  bc="$(skill_dir)/baseline-categories.md"
+  prof="$(skill_dir)/profiles/$lang.md"
+  [ -f "$bc" ] || { printf '\n'; return 0; }
+  # Single awk over baseline + (optional) profile: file 1 builds cat#1..6 (title+body),
+  # file 2 collects the profile's ## Eval labels (cat#N extensions merged into the cat;
+  # plain labels appended after). ';' in any source text → ',' so it can't be mistaken for
+  # the legend's own "; " separator.
+  _legend_awk='
+    FNR==1 { fidx++ }
+    fidx==1 {                                   # baseline-categories.md
+      if (/^## [0-9]+\./) { if (cn) csave(); cn=$2; sub(/\./,"",cn)
+        ct=$0; sub(/^## [0-9]+\.[ ]+/,"",ct); sub(/[ ]+\xc2\xb7.*/,"",ct); sub(/[ ]+·.*/,"",ct)
+        cb=""; closed=0; next }
+      if (/^## /) { if (cn) csave(); cn=""; next }
+      if (cn) { if ($0 ~ /^[ \t]*$/) { if (cb!="") closed=1 } else if (!closed) cb=cb (cb?" ":"") $0 }
+      next
+    }
+    fidx==2 {                                   # profile ## Eval labels section
+      if (/^## Eval labels/) { insec=1; next }
+      if (insec && /^## /) { insec=0; next }
+      if (insec) {
+        i=index($0,":")
+        if (i && $0 ~ /^(cat#[0-9]|[A-Za-z])/) {
+          k=substr($0,1,i-1); v=substr($0,i+1)
+          gsub(/^[ \t]+|[ \t]+$/,"",k); gsub(/^[ \t]+|[ \t]+$/,"",v); gsub(/`/,"",v); gsub(/;/,",",v)
+          if (k ~ /^cat#[0-9]/) ext[k]=v
+          else { lord[++ln]=k; ldef[k]=v }
+        }
+      }
+      next
+    }
+    END {
+      if (cn) csave()                           # flush last cat if profile file was absent
+      for (i=1;i<=6;i++) {                       # CT/CB keyed by the bare number; ext by "cat#N"
+        if (i in CT) { line=CT[i] ": " CB[i]
+          if (("cat#" i) in ext) line=line " (lang-specific: " ext["cat#" i] ")"
+          printf "cat#%s = %s; ", i, line } }
+      for (j=1;j<=ln;j++) printf "%s = %s; ", lord[j], ldef[lord[j]]
+      printf "\n"
+    }
+    function csave() { gsub(/`/,"",cb); gsub(/;/,",",cb); gsub(/[ \t]+$/,"",cb); CT[cn]=ct; CB[cn]=cb }
+  '
+  # Pass the profile as a QUOTED arg — an unquoted $(...) word-splits a skill path that
+  # contains spaces (e.g. macOS "Application Support"), making awk fail with an EMPTY
+  # legend and silently reintroducing the scope-blindness #109 fixes. The END csave()
+  # flush already covers the profile-absent branch.
+  if [ -f "$prof" ]; then awk "$_legend_awk" "$bc" "$prof" 2>/dev/null
+  else awk "$_legend_awk" "$bc" 2>/dev/null; fi
+}
+
 # codex-verify <prompt-file>: cross-model second opinion via Codex (a DIFFERENT model
 # than the one running the scan = different blind spots). Runs Codex NON-INTERACTIVELY
 # and READ-ONLY — it may reason and read, but never write or run side-effecting
@@ -510,6 +614,52 @@ eval_update_baseline() {
     "$pf" "$rf" "$mp" "$mr" "$nb" "$ob" > "$bf"
 }
 
+# _eval_run_one <runner> <src> <lang> <profile> <outfile>: scan ONE fixture, retrying on
+# a missing/invalid EVAL block or a runner error before giving up (#104 — under sustained
+# load a rate-limit/reset wait yields block-less output; one retry usually recovers a
+# clean block). Writes the validated block to <outfile> (possibly EMPTY = a legit
+# clean-fixture "no findings") and returns 0; returns 1 only when every attempt fails.
+# Bumps the global _eval_retries tally — so it must be called DIRECTLY (not in a command
+# substitution, which would run it in a subshell and lose the increment). Knobs:
+#   DEFECT_SCAN_EVAL_RETRIES (default 2) — extra attempts after the first.
+#   DEFECT_SCAN_EVAL_BACKOFF (default 5) — seconds between attempts (0 disables sleep).
+#   DEFECT_SCAN_EVAL_TIMEOUT (optional)  — per-attempt timeout secs, applied ONLY if a
+#     `timeout`/`gtimeout` binary exists (stock macOS has neither — degrade, don't fail).
+_eval_run_one() {
+  _r="$1"; _src="$2"; _lang="$3"; _prof="$4"; _of="$5"
+  # Guard the operator knob: a non-numeric value would abort the arithmetic under set -u.
+  case "${DEFECT_SCAN_EVAL_RETRIES:-2}" in (*[!0-9]*) _tries=3 ;; (*) _tries=$(( ${DEFECT_SCAN_EVAL_RETRIES:-2} + 1 )) ;; esac
+  _bo="${DEFECT_SCAN_EVAL_BACKOFF:-5}"
+  _tobin=""
+  [ -n "${DEFECT_SCAN_EVAL_TIMEOUT:-}" ] && _tobin="$(command -v timeout 2>/dev/null || command -v gtimeout 2>/dev/null || true)"
+  _a=1
+  while [ "$_a" -le "$_tries" ]; do
+    if [ -n "$_tobin" ]; then
+      _out="$("$_tobin" "$DEFECT_SCAN_EVAL_TIMEOUT" "$_r" "$_src" "$_lang" "$_prof" 2>/dev/null)" || _out=""
+    else
+      _out="$("$_r" "$_src" "$_lang" "$_prof" 2>/dev/null)" || _out=""
+    fi
+    # extract_eval_block exits 0 (even for an EMPTY-but-present block = clean fixture) on
+    # a valid result, non-zero (4) on a missing/dup/malformed block. Empty output alone
+    # (runner error) can't yield a valid block, so it falls through to a retry.
+    if [ -n "$_out" ]; then
+      if _blk="$(printf '%s' "$_out" | extract_eval_block)"; then
+        printf '%s' "$_blk" > "$_of"
+        # Only count a RECOVERY if this success came after ≥1 retry — the recovery note
+        # must never print on a sequence that ultimately fails (that would contradict the
+        # PARTIAL line). _eval_retries counts attempts spent; _eval_recovered counts wins.
+        [ "$_a" -gt 1 ] && _eval_recovered=$((_eval_recovered+1))
+        return 0
+      fi
+    fi
+    _a=$((_a+1))
+    [ "$_a" -le "$_tries" ] || break
+    _eval_retries=$((_eval_retries+1))
+    case "$_bo" in ''|0) : ;; *) sleep "$_bo" ;; esac
+  done
+  return 1
+}
+
 # eval-run <lang> [--runs N] [--split seen|held-out|all] [--update-baseline]
 # Model-FREE orchestrator. Per split: N runs, each run scans every SOURCE fixture via
 # the swappable $DEFECT_SCAN_EVAL_RUNNER (per-fixture), accumulates findings into one
@@ -540,7 +690,7 @@ cmd_eval_run() {
       [ "$split" = all ] && { echo "eval-run: $lang/$sp absent — skipping"; continue; }
       echo "eval-run: corpus split not found: $dir" >&2; return 2
     fi
-    pvals=""; rvals=""; clean_fp_runs=0; partial=0
+    pvals=""; rvals=""; clean_fp_runs=0; partial=0; _eval_retries=0; _eval_recovered=0
     last_findings=""
     r=1
     while [ "$r" -le "$runs" ]; do
@@ -550,8 +700,10 @@ cmd_eval_run() {
         [ -f "$src" ] || [ -d "$src" ] || continue
         # Scan profile (arg 3) = --as override, else the corpus lang. Labels still come
         # from $lang (in the runner); only the scan's --lang profile is overridable.
-        out="$("$runner" "$src" "$lang" "${as_profile:-$lang}" 2>/dev/null)" || { partial=1; continue; }
-        block="$(printf '%s' "$out" | extract_eval_block)" || { partial=1; continue; }
+        blkfile="$(mktemp 2>/dev/null || echo "/tmp/ds-blk-$$.$r")"
+        # Call DIRECTLY (not in $()) so _eval_run_one's _eval_retries increments survive.
+        _eval_run_one "$runner" "$src" "$lang" "${as_profile:-$lang}" "$blkfile" || { partial=1; rm -f "$blkfile"; continue; }
+        block="$(cat "$blkfile")"; rm -f "$blkfile"
         [ -n "$block" ] || continue
         if [ -d "$src" ]; then
           # Directory fixture: the runner emits paths relative to the case root; the
@@ -587,8 +739,9 @@ cmd_eval_run() {
       printf '@findings\n%s\n' "$last_findings"
     } > "$art"
 
-    echo "eval-run $lang/$sp: runs=$runs mean_precision=$mp(±$sp_p) mean_recall=$mr(±$sp_r) clean_fp_runs=$clean_fp_runs"
-    [ "$partial" = 1 ] && echo "eval-run $lang/$sp: PARTIAL — at least one fixture run was inconclusive (missing/invalid block)"
+    echo "eval-run $lang/$sp: runs=$runs mean_precision=$mp(±$sp_p) mean_recall=$mr(±$sp_r) clean_fp_runs=$clean_fp_runs retries=$_eval_retries"
+    [ "$_eval_recovered" -gt 0 ] && echo "eval-run $lang/$sp: $_eval_recovered fixture run(s) recovered via retry after a missing/invalid block ($_eval_retries attempt(s) spent) (#104)"
+    [ "$partial" = 1 ] && echo "eval-run $lang/$sp: PARTIAL — a fixture run stayed inconclusive (missing/invalid block) after exhausting retries"
 
     if [ "$update" = 1 ]; then
       if [ "$partial" = 1 ]; then
@@ -944,6 +1097,7 @@ main() {
     preflight)    cmd_preflight "$@" ;;
     eval)         cmd_eval "$@" ;;
     eval-categories) cmd_eval_categories "$@" ;;
+    eval-legend)  cmd_eval_legend "$@" ;;
     eval-run)     cmd_eval_run "$@" ;;
     eval-gaps)    cmd_eval_gaps "$@" ;;
     codex-verify) cmd_codex_verify "$@" ;;
@@ -959,13 +1113,14 @@ main() {
     patterns)  cmd_patterns "$@" ;;
     manifest)  cmd_manifest "$@" ;;
     semgrep-trace) cmd_semgrep_trace "$@" ;;
+    semgrep-pro-status) cmd_semgrep_pro_status "$@" ;;
     supply-chain-config) cmd_supply_chain_config "$@" ;;
     __fmget)   fm_get "$@" ;;
     __fmfield) fm_field "$@" ;;
     __evalblock) extract_eval_block ;;
     __evalgate)   eval_gate "$@" ;;
     __evalupdate) eval_update_baseline "$@" ;;
-    *) echo "usage: detect.sh {preflight|eval|eval-categories|eval-run|eval-gaps|codex-verify|stacks|tool|scope|triage|manifest|semgrep-trace|supply-chain-config|issues|issues-create|issues-ensure-label|labels|profiles|patterns} ..." >&2; return 2 ;;
+    *) echo "usage: detect.sh {preflight|eval|eval-categories|eval-legend|eval-run|eval-gaps|codex-verify|stacks|tool|scope|triage|manifest|semgrep-trace|semgrep-pro-status|supply-chain-config|issues|issues-create|issues-ensure-label|labels|profiles|patterns} ..." >&2; return 2 ;;
   esac
 }
 
