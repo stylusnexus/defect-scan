@@ -313,6 +313,14 @@ _mk_grader_corpus() {  # $1=dir : one buggy fixture (line 4, cat#2) + one clean
   grep -qE '^cat#5:' "$f"
 }
 
+@test "csharp profile declares a cat#2 scope discriminator in ## Eval labels (#106)" {
+  f="$BATS_TEST_DIRNAME/../skills/scan/profiles/csharp.md"
+  grep -qE '^## Eval labels' "$f"
+  grep -qE '^cat#2:' "$f"
+  # the discriminator must mention the rethrow near-miss it exists to exclude
+  grep -qiE 'rethrow' "$f"
+}
+
 @test "eval-legend: works from a skill path containing spaces (#109 regression guard)" {
   # An unquoted profile-arg substitution word-split a spaced install path → empty legend.
   spaced="$BATS_TEST_TMPDIR/space dir/skills"
