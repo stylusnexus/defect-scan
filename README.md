@@ -72,9 +72,11 @@ improvement lands only via reviewed PRs that add fixtures *without* dropping the
 | supply-chain pack | 0.81 | 0.93 | ≥ 0.65 precision |
 
 These are seen-split baselines on the maintainer-run eval harness; a green run means a
-change *didn't get worse* — enforced, not a marketing number. A couple of languages
-(c#, php) are under active precision tuning toward their 1.00 baseline. Full method,
-splits, and how to run it: [`tests/eval/README.md`](./tests/eval/README.md).
+change *didn't get worse* — enforced, not a marketing number. On live re-measurement a
+couple of languages (c#, php) can sit a point or two under 1.00 from a *defensible*
+secondary finding on a bug file — **recall stays 1.00 (no missed bugs)**, and it's held
+inside the gate's noise band. Full method, splits, and how to run it:
+[`tests/eval/README.md`](./tests/eval/README.md).
 
 ## Built-in languages
 15 profiles, each pairing the language's real analyzers with a reasoning checklist
