@@ -11,3 +11,9 @@ defect-scan.code-workspace
 
 # defect-scan eval harness: transient per-run record (not ground truth)
 tests/eval/*/.last-run.*
+
+# internal-only (launch drafts, working notes) and local design/implementation
+# history — kept on disk but never published to the public repo
+docs/internal/
+plans/
+specs/
