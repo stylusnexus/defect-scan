@@ -1,10 +1,80 @@
+<div align="center">
+
 # defect-scan
 
-Language-aware defect-finding **plugin** for Claude Code (and Codex). Detects the
-stack, triages files by risk, runs the real analyzers a project already has, reasons
-about what tools miss using battle-tested patterns, and reports findings in
-confidence tiers (correlated against the issue tracker). Report-only by default;
-`--fix` applies the high-confidence tier.
+### Catch real bugs before code review — inside the agent you already use
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-16a34a?style=for-the-badge)](LICENSE)
+[![Claude Code + Codex](https://img.shields.io/badge/runs_in-Claude_Code_%2B_Codex-7c3aed?style=for-the-badge)](#codex)
+[![15 languages](https://img.shields.io/badge/languages-15-0A66C2?style=for-the-badge)](#built-in-languages)
+[![POSIX sh](https://img.shields.io/badge/engine-one_POSIX_sh_lib-111827?style=for-the-badge)](#supported-platforms)
+
+<p>
+  <a href="#what-you-get-back">Output</a> •
+  <a href="#measured-and-regression-gated">Benchmark</a> •
+  <a href="#built-in-languages">Languages</a> •
+  <a href="#install-team-via-marketplace">Install</a> •
+  <a href="#extending-it-zero-core-edits">Extend</a>
+</p>
+
+</div>
+
+Most scanners flag patterns and dump a wall of warnings. **defect-scan finds defects
+your tools miss and tells you how sure it is** — it detects the stack, runs the *real*
+analyzers your project already has (ruff, tsc, clippy, go vet…), then reasons about the
+bugs linters can't see and reports each finding in a **confidence tier** with a repro
+path and a one-line fix. Correctness, security, *and* supply-chain across 15 languages.
+
+**No service to deploy, no API key, no security-team budget.** It runs as a plugin
+inside Claude Code (and Codex) — the same session you're already coding in. Free, MIT,
+local. Report-only by default; `--fix` applies only the adversarially-verified
+high-confidence tier and refuses on a dirty tree so every fix stays revertable.
+
+## What you get back
+
+A scan returns a tiered, honest report — never a raw warning dump. Each finding
+carries **two independent axes** (how sure we are it's *real*, and how *bad* it is),
+the evidence that survived an adversarial "prove it isn't a bug" pass, and a fix:
+
+```
+defect-scan — src/ (MODE=changes)
+Stacks: python   Tools run: ruff, mypy, bandit, pip-audit   Tools missing: —
+Triage: deep-reasoned top 12 of 34 in-scope files (rest tool-scanned only)
+Correlation: on (2 findings matched existing issues)
+Findings: High 3 · Medium 2 · Low 4   (NEW 4 · already-filed 1)
+
+cat#3 — Injection
+[High] (High) [NEW] api/users.py:88 · SQL built by f-string from a request arg
+  evidence:  f"SELECT … WHERE id = {user_id}" — user_id flows unsanitized from
+             request.args to cursor.execute; survived adversarial verification
+             (no ORM/escaping anywhere on the path)
+  fix:       parameterize — cursor.execute(sql, (user_id,))
+
+cat#2 — Silent failures
+[Medium] (Medium) [LIKELY FILED #142] worker/sync.py:51 · bare except swallows retry error
+  evidence:  except Exception: pass wraps the network retry — failures vanish silently
+  fix:       log and re-raise, or narrow the except to the expected error
+```
+
+Coverage is always reported honestly: if a tool was missing or triage couldn't deep-read
+every file, the header **says so** — it never implies clean coverage it didn't achieve.
+
+## Measured, and regression-gated
+
+defect-scan ships its own evidence. Every supported language has a **labeled fixture
+corpus** with a committed precision/recall baseline, scored by a **model-free grader**
+(±2-line tolerance, strict 1:1 matching). A change may not regress these baselines —
+improvement lands only via reviewed PRs that add fixtures *without* dropping the gate:
+
+| Corpus | precision baseline | recall baseline | enforced floor |
+|---|---|---|---|
+| Most language corpora (python, rust, go, java, ts, ruby, swift, kotlin, dart, objc, yaml, shell) | 1.00 | 1.00 | ≥ 0.80 precision |
+| supply-chain pack | 0.81 | 0.93 | ≥ 0.65 precision |
+
+These are seen-split baselines on the maintainer-run eval harness; a green run means a
+change *didn't get worse* — enforced, not a marketing number. A couple of languages
+(c#, php) are under active precision tuning toward their 1.00 baseline. Full method,
+splits, and how to run it: [`tests/eval/README.md`](./tests/eval/README.md).
 
 ## Built-in languages
 15 profiles, each pairing the language's real analyzers with a reasoning checklist
