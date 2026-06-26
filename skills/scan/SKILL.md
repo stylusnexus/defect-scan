@@ -40,6 +40,9 @@ below are shorthand for that absolute path.
   filed). A **write action** — see Stage 4b for the auth requirement, the mandatory
   dedup gate, label handling, and the batch confirmation. `--dry-run` pairs with it
   to preview without filing.
+- `--sarif <path>` → **also** write a consolidated SARIF 2.1.0 report to `<path>`
+  (for GitHub code-scanning / the VS Code SARIF viewer). Opt-in; the normal prose
+  report is unchanged. See Stage 4c.
 - `--help` → print this usage and exit; do not scan.
 
 ## Stage 1 — Detect
@@ -323,6 +326,19 @@ lib/detect.sh issues-create "<title>" "<body-file>" "<kind-label>[,<priority-lab
 ```
 The helper prints the new issue URL. Capture it, re-tag the finding **[FILED #N]** in
 the final report, and summarize: *"Filed N issues: #.. #.. ; skipped M already-filed."*
+
+### Stage 4c — SARIF export (only when `--sarif <path>`)
+Opt-in; the prose report above is unchanged. After the report, serialize the **same**
+findings as the eval-mode structured stream — one `<path>:<line>:cat#<n>` line per
+reported finding (use the finding's category number; `<path>` relative to the scan
+root) — and pipe it to the deterministic emitter, which maps category → ruleId/CWE and
+severity → SARIF level:
+```
+printf '%s\n' "$lines" | lib/detect.sh sarif > "<path>"
+```
+Do **not** hand-author SARIF JSON — `detect.sh sarif` owns serialization (deterministic,
+testable). Report the written path. This export is lossy by design (the prose evidence
+does not round-trip); the terminal report remains the source of truth.
 
 ### Fixing (only when --fix / --fix-all)
 - **Refuse if the working tree is dirty** (uncommitted changes) unless the user

@@ -75,3 +75,10 @@ any security `CAxxxx` (CA2100/CA3075/CA53xx/CA23xx), `CA2000`/`CA2213` (insertin
 (error-handling & contract decisions), `CA2007` (context-dependent), any `SCSxxxx`
 taint finding, or `dotnet list package --vulnerable` results (package bumps need human
 review + tests).
+
+## Eval labels
+cat#2: a `catch` that logs and **rethrows** (bare `throw;`), or that genuinely handles
+and recovers from the failure, is NOT a silent failure — cat#2 is *swallowing*: the error
+is caught and execution continues past it with no rethrow, no recovery, and nothing
+surfaced to the caller. (`throw ex;` is still cat#2-adjacent because it resets the stack
+trace; a bare `throw;` re-propagation is clean and must not be flagged.)

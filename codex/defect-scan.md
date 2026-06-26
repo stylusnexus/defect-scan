@@ -73,16 +73,18 @@ shell directly, capture JSON with `jq`, read files with your own tools.
 5. **Report (→ correlate → file → fix)** — emit per `report-format.md`. `cat#6`
    (supply-chain / dependency integrity) is a valid report category — group both
    pattern-based supply-chain findings and tool-confirmed known-vuln findings under it.
-   Correlation (Stage 4a), `--file-issues` (Stage 4b), and `--fix`/`--fix-all` behave
-   **exactly** as documented in `SKILL.md` — including the mandatory dedup gate, `gh`
-   auth requirement, label/priority proposal, batch confirmation, and the dirty-tree
-   refusal for fixes. Do not relax any of these invariants in the Codex port.
+   Correlation (Stage 4a), `--file-issues` (Stage 4b), `--sarif <path>` (Stage 4c —
+   serialize the same findings as `<path>:<line>:cat#<n>` lines and pipe to
+   `lib/detect.sh sarif > <path>`; never hand-author SARIF), and `--fix`/`--fix-all`
+   behave **exactly** as documented in `SKILL.md` — including the mandatory dedup gate,
+   `gh` auth requirement, label/priority proposal, batch confirmation, and the
+   dirty-tree refusal for fixes. Do not relax any of these invariants in the Codex port.
 
 ## 2. Arguments & flags
 
 Identical to the skill: `(no arg)` = recent changes · `<path>` · `--full` ·
 `--depth N` · `--lang <profile>` · `--no-correlate` · `--file-issues[=medium]` /
-`--dry-run` · `--fix` / `--fix-all`. See `SKILL.md` "Arguments" for semantics.
+`--dry-run` · `--fix` / `--fix-all` · `--sarif <path>`. See `SKILL.md` "Arguments" for semantics.
 
 ## 3. Stay faithful to the safety model
 
