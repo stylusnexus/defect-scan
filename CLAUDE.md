@@ -224,5 +224,6 @@ profile, add a pattern), `EXTENDING.md` (private drop-in extension), plus
 This repo lives locally under `/Applications/Development/Projects`; the workspace
 `CLAUDE.md` there applies — notably: feature branches with issue numbers
 (`feat/N-name`), Conventional Commit PR titles, never commit directly to `dev`/`main`,
-and squash-merge. Design specs and implementation plans for past work are in
-`specs/` and `plans/`.
+and squash-merge. Design specs (`specs/`) and implementation plans (`plans/`) for
+past work are kept **local and git-ignored** — not published to the public repo — as
+is `docs/internal/` (launch drafts, working notes). Regular `docs/` is tracked.
