@@ -116,7 +116,6 @@ commands/help.md               # /defect-scan:help
 hooks/                         # opt-in pre-commit advisory (hooks.json + pre-commit-scan.sh)
 scripts/setup-optional-tools.sh# one-liner installer for the optional analyzers
 tests/                         # bats suite (run: bats tests/detect.bats)
-specs/  plans/                 # design + implementation history
 ```
 
 ## Install (team, via marketplace)
