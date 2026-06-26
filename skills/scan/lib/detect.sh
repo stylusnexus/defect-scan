@@ -1091,6 +1091,64 @@ cmd_semgrep_trace() {
   return 0
 }
 
+# sarif: read the eval-mode structured finding stream (`<path>:<line>:<category>` lines)
+# on stdin and emit a consolidated SARIF 2.1.0 report on stdout (#115). DETERMINISTIC:
+# the model decides what the findings are (and emits them as the same structured block it
+# already produces in eval mode); this only serializes them. No new prose-side schema.
+# Category → ruleId/CWE/level is a committed table here. Opt-in (`--sarif`); off by default,
+# so a normal scan's prose report is untouched. Unknown (non-cat#) labels map to a generic
+# rule. Lossy by nature (prose evidence does not round-trip) — richer per-finding messages
+# and tier-driven levels are deferred to v2.
+cmd_sarif() {
+  jqbin="$(command -v jq 2>/dev/null || true)"
+  [ -n "${DEFECT_SCAN_NO_JQ:-}" ] && jqbin=""   # test/CI hook: force the no-jq path
+  [ -n "$jqbin" ] || { echo "sarif: jq required for SARIF emission (install jq)" >&2; return 3; }
+  in="$(cat)"
+  # Strip CR first: a CRLF stream (Git-Bash/Windows) would smuggle a trailing \r into the
+  # category, silently degrading a known cat#<n> to the generic rule. Then drop
+  # blank/comment lines; what remains MUST be <path>:<line>:<category> (same grammar as the
+  # eval block), with <line> >= 1 — SARIF region.startLine is 1-based and upload-sarif
+  # rejects 0. A malformed line is a protocol error, not silently skipped.
+  clean="$(printf '%s\n' "$in" | tr -d '\r' | grep -vE '^[[:space:]]*$|^[[:space:]]*#' || true)"
+  bad=$(printf '%s\n' "$clean" | grep -vE '^$|^[^:]+:[1-9][0-9]*:[^:]+$' | grep -c . 2>/dev/null || true)
+  [ "$bad" = "0" ] || { echo "sarif: malformed finding line (need <path>:<line>:<category>, line >= 1)" >&2; return 4; }
+  ver="$("$jqbin" -r '.version // "unknown"' "$(skill_dir)/../../.claude-plugin/plugin.json" 2>/dev/null || echo unknown)"
+  [ -n "$ver" ] || ver="unknown"
+  printf '%s\n' "$clean" | "$jqbin" -R -s --arg ver "$ver" '
+    # Committed category → rule metadata. cat#6 CWE matches baseline-categories.md.
+    def meta:
+      { "cat#1": {rid:"defect-scan/cat-1-null-deref",   name:"Null / undefined & unchecked returns", cwe:"CWE-252",  sev:"Medium"},
+        "cat#2": {rid:"defect-scan/cat-2-silent-failure",name:"Silent failures & swallowed errors",   cwe:"CWE-391",  sev:"Medium"},
+        "cat#3": {rid:"defect-scan/cat-3-injection",     name:"Injection & untrusted input",          cwe:"CWE-74",   sev:"High"},
+        "cat#4": {rid:"defect-scan/cat-4-resource-leak", name:"Resource leaks",                        cwe:"CWE-404",  sev:"Medium"},
+        "cat#5": {rid:"defect-scan/cat-5-concurrency",   name:"Concurrency hazards",                   cwe:"CWE-362",  sev:"High"},
+        "cat#6": {rid:"defect-scan/cat-6-supply-chain",  name:"Supply-chain / dependency integrity",   cwe:"CWE-1357", sev:"High"} };
+    def other: {rid:"defect-scan/other", name:"Other defect", cwe:null, sev:"Medium"};
+    def level: {"High":"error","Medium":"warning","Low":"note"};
+    def rule($m): { id:$m.rid, name:$m.name, shortDescription:{text:$m.name},
+                    properties: ( {tags:(["security"] + (if $m.cwe then ["external/cwe/" + ($m.cwe|ascii_downcase)] else [] end))}
+                                  + (if $m.cwe then {cwe:$m.cwe} else {} end) ) };
+    ( split("\n") | map(select(length>0)) ) as $lines
+    | ( $lines | map(
+          ( capture("^(?<p>[^:]+):(?<ln>[0-9]+):(?<cat>.+)$") ) as $f
+          | ( $f.cat | gsub("^ +| +$";"") ) as $cat   # tolerate stray padding around the label
+          | ( meta[$cat] // other ) as $m
+          | { ruleId:$m.rid,
+              level: ( level[$m.sev] // "warning" ),
+              message:{ text: ( $m.name + (if $m.cwe then " (" + $m.cwe + ")" else "" end) ) },
+              locations:[ {physicalLocation:{ artifactLocation:{uri:$f.p}, region:{startLine:($f.ln|tonumber)} }} ] }
+      ) ) as $results
+    | { "$schema":"https://json.schemastore.org/sarif-2.1.0.json",
+        version:"2.1.0",
+        runs:[ { tool:{ driver:{
+                   name:"defect-scan",
+                   informationUri:"https://github.com/stylusnexus/defect-scan",
+                   version:$ver,
+                   rules: ( [ meta | to_entries[] | rule(.value) ] + [ rule(other) ] ) } },
+                 results:$results } ] }
+  '
+}
+
 main() {
   sub="${1:-}"; [ $# -gt 0 ] && shift || true
   case "$sub" in
@@ -1113,6 +1171,7 @@ main() {
     patterns)  cmd_patterns "$@" ;;
     manifest)  cmd_manifest "$@" ;;
     semgrep-trace) cmd_semgrep_trace "$@" ;;
+    sarif)     cmd_sarif "$@" ;;
     semgrep-pro-status) cmd_semgrep_pro_status "$@" ;;
     supply-chain-config) cmd_supply_chain_config "$@" ;;
     __fmget)   fm_get "$@" ;;
@@ -1120,7 +1179,7 @@ main() {
     __evalblock) extract_eval_block ;;
     __evalgate)   eval_gate "$@" ;;
     __evalupdate) eval_update_baseline "$@" ;;
-    *) echo "usage: detect.sh {preflight|eval|eval-categories|eval-legend|eval-run|eval-gaps|codex-verify|stacks|tool|scope|triage|manifest|semgrep-trace|semgrep-pro-status|supply-chain-config|issues|issues-create|issues-ensure-label|labels|profiles|patterns} ..." >&2; return 2 ;;
+    *) echo "usage: detect.sh {preflight|eval|eval-categories|eval-legend|eval-run|eval-gaps|codex-verify|stacks|tool|scope|triage|manifest|semgrep-trace|semgrep-pro-status|supply-chain-config|sarif|issues|issues-create|issues-ensure-label|labels|profiles|patterns} ..." >&2; return 2 ;;
   esac
 }
 

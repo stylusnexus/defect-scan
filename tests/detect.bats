@@ -1972,3 +1972,77 @@ JSON
   ! grep -q "9 battle-tested patterns" "$root/commands/help.md"
   grep -qi "multi-file\|fixture repo\|directory fixture" "$root/tests/eval/README.md"
 }
+
+# ---- SARIF emission (#115) ----
+
+@test "detect.sh usage lists the sarif subcommand" {
+  run "$DETECT" bogus
+  [[ "$output" == *"sarif"* ]]
+}
+
+@test "sarif: emits schema-valid SARIF 2.1.0 with one result per finding" {
+  command -v jq >/dev/null || skip "jq not installed"
+  out="$(printf 'api/users.py:88:cat#3\nworker/sync.py:51:cat#2\n' | "$DETECT" sarif)"
+  echo "$out" | jq -e '.["$schema"] and .version=="2.1.0"' >/dev/null
+  echo "$out" | jq -e '.runs[0].tool.driver.name=="defect-scan"' >/dev/null
+  [ "$(echo "$out" | jq '.runs[0].results | length')" -eq 2 ]
+  echo "$out" | jq -e '.runs[0].results[0].locations[0].physicalLocation.region.startLine==88' >/dev/null
+  echo "$out" | jq -e '.runs[0].results[0].locations[0].physicalLocation.artifactLocation.uri=="api/users.py"' >/dev/null
+}
+
+@test "sarif: every result ruleId resolves to a declared rule (upload-sarif integrity)" {
+  command -v jq >/dev/null || skip "jq not installed"
+  out="$(printf 'a.py:1:cat#3\nb.go:2:cat#6\nc.rs:3:rust-panic\n' | "$DETECT" sarif)"
+  echo "$out" | jq -e '
+    (.runs[0].tool.driver.rules | map(.id)) as $ids
+    | (.runs[0].results | map(.ruleId) | unique) as $used
+    | ($used - $ids) == []' >/dev/null
+}
+
+@test "sarif: cat#3 maps to the injection rule, CWE-74, error level" {
+  command -v jq >/dev/null || skip "jq not installed"
+  out="$(printf 'a.py:1:cat#3\n' | "$DETECT" sarif)"
+  echo "$out" | jq -e '.runs[0].results[0].ruleId=="defect-scan/cat-3-injection"' >/dev/null
+  echo "$out" | jq -e '.runs[0].results[0].level=="error"' >/dev/null
+  echo "$out" | jq -e '.runs[0].tool.driver.rules[] | select(.id=="defect-scan/cat-3-injection") | .properties.cwe=="CWE-74"' >/dev/null
+}
+
+@test "sarif: a non-cat# label maps to the generic 'other' rule" {
+  command -v jq >/dev/null || skip "jq not installed"
+  out="$(printf 'a.rs:9:rust-panic\n' | "$DETECT" sarif)"
+  echo "$out" | jq -e '.runs[0].results[0].ruleId=="defect-scan/other"' >/dev/null
+}
+
+@test "sarif: empty findings yield valid SARIF with zero results" {
+  command -v jq >/dev/null || skip "jq not installed"
+  out="$(printf '' | "$DETECT" sarif)"
+  echo "$out" | jq -e '.version=="2.1.0" and (.runs[0].results|length)==0' >/dev/null
+}
+
+@test "sarif: a malformed finding line is a protocol error (exit 4)" {
+  run bash -c "printf 'not-a-valid-line\n' | '$DETECT' sarif"
+  [ "$status" -eq 4 ]
+}
+
+@test "sarif: degrades with a clear error when jq is unavailable (exit 3)" {
+  run bash -c "printf 'a.py:1:cat#3\n' | DEFECT_SCAN_NO_JQ=1 '$DETECT' sarif"
+  [ "$status" -eq 3 ]
+  [[ "$output" == *"jq"* ]]
+}
+
+@test "sarif: a CRLF stream still maps cat#3 (not silently degraded to 'other')" {
+  command -v jq >/dev/null || skip "jq not installed"
+  out="$(printf 'a.py:1:cat#3\r\n' | "$DETECT" sarif)"
+  echo "$out" | jq -e '.runs[0].results[0].ruleId=="defect-scan/cat-3-injection"' >/dev/null
+}
+
+@test "sarif: a space-padded category is tolerated, not mapped to 'other'" {
+  command -v jq >/dev/null || skip "jq not installed"
+  out="$(printf 'a.py:1: cat#3\n' | "$DETECT" sarif)"
+  echo "$out" | jq -e '.runs[0].results[0].ruleId=="defect-scan/cat-3-injection"' >/dev/null
+}
+
+@test "sarif: line 0 is a protocol error (SARIF startLine is 1-based) (exit 4)" {
+  run bash -c "printf 'a.py:0:cat#3\n' | '$DETECT' sarif"
+  [ "$status" -eq 4 ]
+}

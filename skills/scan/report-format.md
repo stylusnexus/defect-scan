@@ -53,3 +53,9 @@ under the supply-chain group.
 When `--cross-model` ran, a finding may also carry **cross-model ✓** (a second model
 confirmed it) or **cross-model ✗** (the second model refuted it → downgraded). The
 header notes that cross-model verification ran and against which model.
+
+**SARIF export (`--sarif <path>`, opt-in).** Independently of the prose report, the
+same findings can be serialized to a SARIF 2.1.0 file via `detect.sh sarif` (SKILL.md
+Stage 4c): `cat#<n>` → ruleId + CWE, default severity → SARIF `level`. The prose
+report stays the source of truth; SARIF is a lossy export for GitHub code-scanning /
+editor SARIF viewers, not a replacement.

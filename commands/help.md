@@ -26,6 +26,8 @@ Language-aware defect hunter. Pipeline: **detect → triage → tool pass → re
   issues (requires correlation), reuses the repo's existing defect + priority labels
   (offers to add P0/P1/P2 if none exist), and confirms the batch first. Pair with
   `--dry-run` to preview without filing.
+- `--sarif <path>` — also write a SARIF 2.1.0 report to `<path>` (for GitHub
+  code-scanning / the VS Code SARIF viewer). Opt-in; the prose report is unchanged.
 
 ## What it uses
 - **Real analyzers if installed** (project-local first): `ruff`/`mypy`, `tsc`/`eslint`;
