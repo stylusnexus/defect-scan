@@ -10,6 +10,13 @@ commit messages instead (`feat:`, `fix:`, `perf:`, `docs:` … show up; `chore:`
 are hidden by default). The release commit and this file are back-merged `main → dev`
 by the deploy flow so history stays aligned.
 
+## [1.13.0](https://github.com/stylusnexus/defect-scan/compare/v1.12.0...v1.13.0) (2026-06-26)
+
+
+### Features
+
+* opt-in SARIF 2.1.0 export (--sarif) + csharp cat[#2](https://github.com/stylusnexus/defect-scan/issues/2) precision fix ([#121](https://github.com/stylusnexus/defect-scan/issues/121)) ([492f076](https://github.com/stylusnexus/defect-scan/commit/492f076dd15d2f20805b0eaad819767eb6338148))
+
 ## [1.12.0](https://github.com/stylusnexus/defect-scan/compare/v1.11.0...v1.12.0) (2026-06-24)
 
 
